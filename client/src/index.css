@@ -1,0 +1,23 @@
+:root {
+  font-family: "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui,
+    sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: linear-gradient(160deg, #fff6f0 0%, #ffe8f0 40%, #f0f4ff 100%);
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
