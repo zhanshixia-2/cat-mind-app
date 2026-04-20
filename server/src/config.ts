@@ -6,8 +6,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** 项目根目录 .env（npm workspaces 下 dev 时 cwd 常在 server/，默认 dotenv 读不到根目录） */
 const rootEnv = join(__dirname, "../../.env");
 const serverEnv = join(__dirname, "../.env");
-dotenv.config({ path: rootEnv });
-dotenv.config({ path: serverEnv });
+/** override：否则系统/PM2 里已存在的空变量会挡住 .env（本机无预置变量故正常，服务器常见） */
+dotenv.config({ path: rootEnv, override: true });
+dotenv.config({ path: serverEnv, override: true });
 
 function req(name: string, fallback?: string): string {
   const v = process.env[name] ?? fallback;
