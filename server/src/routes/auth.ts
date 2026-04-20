@@ -12,10 +12,13 @@ authRouter.post("/login", (req, res) => {
     return;
   }
   const token = signAuthCookie();
+  const cookieSecure =
+    process.env.NODE_ENV === "production" &&
+    process.env.AUTH_COOKIE_SECURE !== "false";
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecure,
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: "/",
   });

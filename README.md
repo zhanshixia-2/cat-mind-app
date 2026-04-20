@@ -20,8 +20,8 @@ npm install
 npm run dev
 ```
 
-- 前端：<http://localhost:5173>（通过 Vite 代理访问 `/api`）
-- 后端：<http://localhost:8787>
+- 前端：[http://localhost:5173](http://localhost:5173)（通过 Vite 代理访问 `/api`）
+- 后端：[http://localhost:8787](http://localhost:8787)
 
 使用 `.env` 中的 `APP_PASSWORD` 登录，再上传图片。
 
@@ -38,11 +38,11 @@ npm run dev
 
 若第一次「猫判定」接口报错不支持 JSON 模式，可加 `CLASSIFY_JSON_FORMAT=false`。
 
-生产环境请设置 `NODE_ENV=production`、`CLIENT_ORIGIN` 为前端实际域名，Cookie 会启用 `secure`。
+生产环境请设置 `NODE_ENV=production`、`CLIENT_ORIGIN` 为前端实际访问地址，Cookie 默认启用 `secure`（仅 HTTPS 发送）。若暂时只用 **HTTP + 公网 IP**（未上 HTTPS），须在 `.env` 增加 `AUTH_COOKIE_SECURE=false`，否则登录后接口仍可能返回 401。
 
 ## 目录说明
 
-- `docs/DEPLOY_ALIYUN_ECS.md`：**阿里云 ECS** 从零部署步骤（Nginx + PM2 + 环境变量）。
+- `docs/DEPLOY_ALIYUN_LIGHT.md`：**阿里云轻量应用服务器** 从零部署步骤（Nginx + PM2 + 环境变量；ECS 部署方式相同，仅控制台「安全组 / 防火墙」入口不同）。
 - `POST /api/cat/analyze`：`multipart/form-data` 字段 `photo`；响应为 `application/x-ndjson` 流（判猫通过后先发 `meta`，再 `delta`×N，最后 `done`；非猫/低置信度以流内 `error` 行返回并退回当日额度）。
 - `server/src/ai/pipeline.ts`：第一次多模态判猫（非流式）+ 第二次多模态内心戏（流式增量）
 - `server/src/ai/prompts.ts`：提示词、内心戏人设随机；旧版固定文案库已注释
