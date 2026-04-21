@@ -43,7 +43,6 @@ export function WaitCatCarousel({ active }: Props) {
   const tip = useMemo(() => TIPS[index % TIPS.length], [index]);
 
   const src = WAIT_CAT_IMAGE_URLS[index] ?? "";
-  const displayNum = index + 1;
 
   if (!active) return null;
 

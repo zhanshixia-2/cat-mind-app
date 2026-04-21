@@ -1,9 +1,26 @@
 :root {
+  /* 设计稿：暖色奶油底、深棕字、橙色主操作 */
+  --color-bg-app: #fffbf5;
+  --color-bg-login: #fff9f0;
+  --color-text: #3e2723;
+  --color-text-muted: #a1887f;
+  --color-text-hint: #8d6e63;
+  --color-orange: #ff8c00;
+  --color-orange-hover: #f57c00;
+  --color-border-soft: rgba(255, 140, 0, 0.35);
+  --color-input-bg: #fff8e8;
+  --color-result-bg: #fff9e6;
+  --color-btn-disabled: #e0e0e0;
+  --radius-card: 20px;
+  --radius-btn: 14px;
+  --radius-input: 10px;
+  --shadow-card: 0 8px 28px rgba(62, 39, 35, 0.08);
+
   font-family: "SF Pro Text", "PingFang SC", "Microsoft YaHei", system-ui,
     sans-serif;
   line-height: 1.5;
-  color: #1a1a1a;
-  background: linear-gradient(160deg, #fff6f0 0%, #ffe8f0 40%, #f0f4ff 100%);
+  color: var(--color-text);
+  background: var(--color-bg-app);
   min-height: 100vh;
 }
 

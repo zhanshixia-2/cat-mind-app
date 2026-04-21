@@ -5,7 +5,6 @@ import {
   fetchUsage,
   login,
   logout,
-  type Usage,
 } from "./api";
 import { WaitCatCarousel } from "./WaitCatCarousel";
 import "./App.css";
@@ -15,7 +14,6 @@ export function App() {
   const [authed, setAuthed] = useState(false);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [usage, setUsage] = useState<Usage | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -32,10 +30,9 @@ export function App() {
 
   const refreshUsage = useCallback(async () => {
     try {
-      const u = await fetchUsage();
-      setUsage(u);
+      await fetchUsage();
     } catch {
-      setUsage(null);
+      /* 额度仅服务端计数，前端可不展示 */
     }
   }, []);
 
@@ -74,12 +71,16 @@ export function App() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function handleTryAgain() {
+  function handleReselect() {
     setFile(null);
     setResult(null);
     setHint(null);
     setLoading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function handleTryAgain() {
+    handleReselect();
   }
 
   const resultWithPrefix =
@@ -110,7 +111,7 @@ export function App() {
     e.preventDefault();
     if (loading) return;
     if (!file) {
-      setHint("请先选择一张猫图");
+      setHint("请先上传您的猫主子");
       return;
     }
     setLoading(true);
@@ -137,25 +138,30 @@ export function App() {
 
   if (checking) {
     return (
-      <div className="page">
-        <p className="muted">加载中…</p>
+      <div className="page page--checking">
+        <p className="text-loading">加载中…</p>
       </div>
     );
   }
 
   if (!authed) {
     return (
-      <div className="page">
-        <header className="hero">
+      <div className="page page--login">
+        <header className="login-brand">
+          <span className="login-emoji" aria-hidden>
+            🐱
+          </span>
           <h1>猫猫内心戏</h1>
-          <p className="muted">上传猫图，听听它在想什么（需访问密码）</p>
+          <p className="login-sub">
+            上传猫主子，听听它在想什么（需访问密码）
+          </p>
         </header>
-        <form className="card" onSubmit={handleLogin}>
+        <form className="card card--login" onSubmit={handleLogin}>
           <label className="label">
             访问密码
             <input
               type="password"
-              className="input"
+              className="input--login"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="向管理员索取"
@@ -163,10 +169,11 @@ export function App() {
             />
           </label>
           {loginError ? <p className="error">{loginError}</p> : null}
-          <button type="submit" className="btn primary">
+          <button type="submit" className="btn-login-primary">
             进入
           </button>
         </form>
+        <p className="login-footer-hint">🐾 默认密码：meow123</p>
       </div>
     );
   }
@@ -174,64 +181,105 @@ export function App() {
   return (
     <div className="page page--app">
       <div className="app-topbar">
-        <button type="button" className="btn ghost app-logout" onClick={handleLogout}>
+        <button
+          type="button"
+          className="btn-exit"
+          onClick={handleLogout}
+        >
           退出
         </button>
       </div>
 
-      <header className="hero hero--app">
+      <header className="hero-with-paws">
+        <p className="paw-prints" aria-hidden>
+          🐾 🐾
+        </p>
         <h1>猫猫想说什么</h1>
       </header>
 
-      <form className="card" onSubmit={handleSubmit}>
-        <label className="label">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              setFile(f ?? null);
-              if (f) {
-                setResult(null);
-                setHint(null);
-                setLoading(false);
-              }
-            }}
-          />
-        </label>
-        {preview ? (
-          <img src={preview} alt="预览" className="preview" />
-        ) : null}
+      <form className="card card--main" onSubmit={handleSubmit}>
+        <p className="section-label">选择猫主子</p>
+
+        <div className="upload-zone-wrap">
+          {!preview ? (
+            <label className="upload-zone">
+              <input
+                ref={fileInputRef}
+                className="hidden-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  setFile(f ?? null);
+                  if (f) {
+                    setResult(null);
+                    setHint(null);
+                    setLoading(false);
+                  }
+                }}
+              />
+              <div className="upload-placeholder">
+                <span className="upload-icon" aria-hidden>
+                  📷
+                </span>
+                <span className="upload-title">点击选择图片</span>
+                <span className="upload-formats">支持 JPG、PNG、WebP、GIF</span>
+              </div>
+            </label>
+          ) : (
+            <div className="upload-zone upload-zone--has-preview">
+              <img
+                src={preview}
+                alt="已选择的猫图"
+                className="preview-in-zone"
+              />
+              {!result && !loading ? (
+                <button
+                  type="button"
+                  className="link-reselect"
+                  onClick={handleReselect}
+                >
+                  重新选择
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
+
         <WaitCatCarousel active={loading} />
+
         {result === null && !loading ? (
           <button
             type="submit"
-            className="btn primary"
+            className="btn-primary-full"
             disabled={!file}
           >
             读取主子内心
           </button>
         ) : null}
+
         {result !== null ? (
           <>
-            <blockquote className="result">
+            <div className="result-box">
               <p>
-                <span className="result-prefix">【咪想告诉你：】</span>
+                <span className="result-emoji" aria-hidden>
+                  😺
+                </span>
+                <span className="result-prefix">咪想告诉你：</span>
                 {result}
               </p>
-            </blockquote>
+            </div>
             <div className="result-actions">
               <button
                 type="button"
-                className="btn secondary"
+                className="btn-share"
                 onClick={handleShare}
               >
                 分享
               </button>
               <button
                 type="button"
-                className="btn outline"
+                className="btn-retry"
                 onClick={handleTryAgain}
               >
                 再试一次
@@ -239,7 +287,10 @@ export function App() {
             </div>
           </>
         ) : null}
-      </form>
+      </form>   
+      <footer className="app-footer">
+        🐱 每只猫都有一肚子话想说
+      </footer>
     </div>
   );
 }
