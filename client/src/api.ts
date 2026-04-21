@@ -56,30 +56,16 @@ export type AnalyzeFail = {
   remaining: number;
 };
 
-type NdjsonLine =
-  | { type: "meta"; ok: true; remaining: number }
-  | { type: "delta"; text: string }
-  | {
-      type: "error";
-      ok: false;
-      code: string;
-      message: string;
-      remaining: number;
-    }
-  | { type: "done" };
-
-export type AnalyzePhotoStreamCallbacks = {
-  onMeta: (remaining: number) => void;
-  onDelta: (text: string) => void;
-  onError: (fail: AnalyzeFail) => void;
-  onDone: () => void;
+export type AnalyzeSuccess = {
+  ok: true;
+  text: string;
+  remaining: number;
 };
 
-/** multipart 上传；响应为 NDJSON 流（application/x-ndjson） */
-export async function analyzePhotoStream(
-  file: File,
-  callbacks: AnalyzePhotoStreamCallbacks,
-): Promise<void> {
+export type AnalyzeResult = AnalyzeSuccess | AnalyzeFail;
+
+/** multipart 上传；响应为 JSON（{ ok: true, text, remaining } 或 { ok: false, ... }） */
+export async function analyzePhoto(file: File): Promise<AnalyzeResult> {
   const fd = new FormData();
   fd.append("photo", file);
   const res = await fetch("/api/cat/analyze", {
@@ -88,72 +74,35 @@ export async function analyzePhotoStream(
     body: fd,
   });
 
-  const ct = res.headers.get("content-type") ?? "";
-
   if (res.status === 429) {
     const data = (await parseJson(res)) as { error?: string };
-    callbacks.onError({
+    return {
       ok: false,
       code: "RATE_LIMIT",
       message: String(data.error ?? "额度已用完"),
       remaining: 0,
-    });
-    return;
+    };
   }
 
-  if (!res.ok && ct.includes("application/json")) {
-    const data = (await parseJson(res)) as { error?: string };
-    throw new Error(String(data.error ?? "请求失败"));
-  }
+  const data = (await parseJson(res)) as AnalyzeResult & { error?: string };
 
   if (!res.ok) {
-    throw new Error(`请求失败 (${res.status})`);
+    return {
+      ok: false,
+      code: "HTTP_ERROR",
+      message: String(data.error ?? `请求失败 (${res.status})`),
+      remaining: 0,
+    };
   }
 
-  if (!ct.includes("ndjson") && !ct.includes("x-ndjson")) {
-    throw new Error("响应格式异常");
+  if (typeof data.ok === "boolean") {
+    return data as AnalyzeResult;
   }
 
-  const reader = res.body?.getReader();
-  if (!reader) {
-    throw new Error("无法读取响应流");
-  }
-
-  const decoder = new TextDecoder();
-  let buf = "";
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const lines = buf.split("\n");
-    buf = lines.pop() ?? "";
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      let row: NdjsonLine;
-      try {
-        row = JSON.parse(line) as NdjsonLine;
-      } catch {
-        continue;
-      }
-      if (row.type === "meta" && row.ok) {
-        callbacks.onMeta(row.remaining);
-      } else if (row.type === "delta") {
-        callbacks.onDelta(row.text);
-      } else if (row.type === "error" && !row.ok) {
-        callbacks.onError({
-          ok: false,
-          code: row.code,
-          message: row.message,
-          remaining: row.remaining,
-        });
-        return;
-      } else if (row.type === "done") {
-        callbacks.onDone();
-        return;
-      }
-    }
-  }
-
-  throw new Error("连接已关闭，未收到完整结果");
+  return {
+    ok: false,
+    code: "BAD_RESPONSE",
+    message: "响应格式异常",
+    remaining: 0,
+  };
 }

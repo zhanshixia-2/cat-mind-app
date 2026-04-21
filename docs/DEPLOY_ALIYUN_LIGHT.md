@@ -128,14 +128,14 @@ nano .env
 参考仓库内 `.env.example`，至少包含（值改为自己的）：
 
 
-| 变量                                     | 说明                 |
-| -------------------------------------- | ------------------ |
-| `APP_PASSWORD`                         | 访问密码               |
-| `JWT_SECRET`                           | 长随机字符串             |
-| `DASHSCOPE_API_KEY` 或 `OPENAI_API_KEY` | 百炼 / OpenAI Key    |
-| `PORT`                                 | 后端端口，如 `8787`      |
-| `NODE_ENV`                             | 生产环境填 `production` |
-| `CLIENT_ORIGIN`                        | 浏览器访问前端的完整地址       |
+| 变量                                     | 说明                                                                  |
+| -------------------------------------- | ------------------------------------------------------------------- |
+| `APP_PASSWORD`                         | 访问密码                                                                |
+| `JWT_SECRET`                           | 长随机字符串                                                              |
+| `DASHSCOPE_API_KEY` 或 `OPENAI_API_KEY` | 百炼 / OpenAI Key                                                     |
+| `PORT`                                 | 后端端口，如 `8787`                                                       |
+| `NODE_ENV`                             | 生产环境填 `production`                                                  |
+| `CLIENT_ORIGIN`                        | 浏览器访问前端的完整地址                                                        |
 | `AUTH_COOKIE_SECURE`                   | 仅用 **HTTP**（如 `http://公网IP`）时填 `false`，否则登录 Cookie 无法用于接口，会 **401** |
 
 
@@ -205,7 +205,6 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
-        proxy_buffering off;
     }
 
     location / {
@@ -241,7 +240,7 @@ nginx -t && systemctl reload nginx
 ## 九、本项目注意事项
 
 - `**.env` 放在项目根目录**（与 `server` 内加载路径一致）。
-- **流式接口**：Nginx 中已配置 `proxy_buffering off` 与较长 `proxy_read_timeout`，减轻 NDJSON 流被截断的问题。
+- `**/api/cat/analyze`**：非流式 JSON 响应；Nginx 中对 `/api` 的 `proxy_read_timeout` 仍可保留，避免模型较慢时网关超时。
 - **更新代码后**：`git pull` → `npm run build` → `pm2 restart cat-mind-server`；若仅前端变更，可只构建 client 后强刷浏览器（`Ctrl+F5`）。
 
 ---

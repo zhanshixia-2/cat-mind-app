@@ -1,6 +1,6 @@
 # 猫猫内心戏（Cat Mind）
 
-React + Node 小应用：上传**猫图** → **两次**多模态调用（先判是否为猫且置信度 ≥ 0.7，再流式生成内心独白），内心戏以 **NDJSON 流**推给前端逐字展示；固定文案库已停用，仅作备查注释保留在 `prompts.ts`。
+React + Node 小应用：上传**猫图** → 多模态生成内心独白（当前默认跳过判猫；非流式一次返回 JSON，内心戏长度上限见 `config.maxInnerThoughtChars`）；固定文案库已停用，仅作备查注释保留在 `prompts.ts`。
 
 本仓库为**独立项目**，可与其它业务仓库（例如 `lingowhale`）**并列存放**，无嵌套关系。示例路径：`/Users/macos/zsh/cat-mind-app`（换机器后请改为你本机目录）。
 
@@ -43,7 +43,7 @@ npm run dev
 ## 目录说明
 
 - `docs/DEPLOY_ALIYUN_LIGHT.md`：**阿里云轻量应用服务器** 从零部署步骤（Nginx + PM2 + 环境变量；ECS 部署方式相同，仅控制台「安全组 / 防火墙」入口不同）。
-- `POST /api/cat/analyze`：`multipart/form-data` 字段 `photo`；响应为 `application/x-ndjson` 流（判猫通过后先发 `meta`，再 `delta`×N，最后 `done`；非猫/低置信度以流内 `error` 行返回并退回当日额度）。
+- `POST /api/cat/analyze`：`multipart/form-data` 字段 `photo`；响应为 JSON：`{ ok: true, text, remaining }` 或 `{ ok: false, code, message, remaining }`；额度满时 HTTP 429。
 - `server/src/ai/pipeline.ts`：第一次多模态判猫（非流式）+ 第二次多模态内心戏（流式增量）
 - `server/src/ai/prompts.ts`：提示词、内心戏人设随机；旧版固定文案库已注释
 - `client/src`：React 界面

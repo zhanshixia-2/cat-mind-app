@@ -205,3 +205,77 @@
     min-width: 100%;
   }
 }
+
+/* 生成中：轮换示意猫图 */
+.wait-cats {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.wait-cats__header {
+  text-align: center;
+}
+
+.wait-cats__title {
+  font-size: clamp(1rem, 3.8vw, 1.2rem);
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+  line-height: 1.35;
+  color: #333;
+}
+
+.wait-cats__sub {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #777;
+}
+
+.wait-cats__viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f0ebe8;
+  box-shadow: inset 0 0 0 1px rgba(80, 40, 80, 0.08);
+}
+
+.wait-cats__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  animation: waitCatsFade 0.38s ease-out;
+}
+
+@keyframes waitCatsFade {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.wait-cats__index {
+  margin: 0;
+  text-align: center;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: #888;
+}
+
+.wait-cats__tip {
+  margin: 0;
+  text-align: center;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #666;
+  min-height: 2.6em;
+}

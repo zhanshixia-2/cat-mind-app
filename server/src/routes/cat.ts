@@ -3,10 +3,11 @@ import multer from "multer";
 import type { RequestHandler } from "express";
 import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
-import { runCatMindPipelineStream } from "../ai/pipeline.js";
+import { runCatMindPipeline } from "../ai/pipeline.js";
 import { requireAuth } from "../middleware/authJwt.js";
 import {
   getDailyUsage,
+  refundDailySlot,
   tryConsumeDailySlot,
 } from "../utils/dailyLimit.js";
 
@@ -59,32 +60,16 @@ const handleAnalyze: RequestHandler = async (req, res) => {
   const mime = req.file.mimetype;
   const imageBase64 = req.file.buffer.toString("base64");
 
-  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("X-Accel-Buffering", "no");
-
   try {
-    await runCatMindPipelineStream(mime, imageBase64, requestId, (line) => {
-      res.write(`${JSON.stringify(line)}\n`);
-    });
+    const result = await runCatMindPipeline(mime, imageBase64, requestId);
+    res.json(result);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "服务器错误";
+    refundDailySlot();
     console.error(`[${requestId}]`, e);
-    try {
-      res.write(
-        `${JSON.stringify({
-          type: "error",
-          ok: false,
-          code: "AI_ERROR",
-          message: msg,
-          remaining: getDailyUsage(config.dailyUploadLimit).remaining,
-        })}\n`,
-      );
-    } catch {
-      /* ignore write after close */
-    }
-  } finally {
-    res.end();
+    res.status(500).json({
+      error: e instanceof Error ? e.message : "服务器错误",
+      code: "INTERNAL",
+    });
   }
 };
 

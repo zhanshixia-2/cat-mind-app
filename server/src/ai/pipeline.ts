@@ -18,54 +18,25 @@ export type CatClassifyResult = {
   reason?: string;
 };
 
-// 第一次多模态「判猫」已暂时关闭（原 classifyCat / parseClassifyJson 见 git 历史）。
-// 恢复两次调用时：从版本历史恢复 classifyCat，并 import CAT_CLASSIFY_SYSTEM，取消下方「默认全部为猫」逻辑。
-
-/** NDJSON 行：推给前端解析 */
-export type NdjsonLine =
-  | { type: "meta"; ok: true; remaining: number }
-  | { type: "delta"; text: string }
-  | {
-      type: "error";
-      ok: false;
-      code: string;
-      message: string;
-      remaining: number;
-    }
-  | { type: "done" };
+/** 与 POST /api/cat/analyze 的 JSON 体一致 */
+export type CatPipelineResult =
+  | { ok: true; text: string; remaining: number }
+  | { ok: false; code: string; message: string; remaining: number };
 
 /**
- * 当前：跳过第一次判猫，默认全部为猫；仅第二次多模态流式生成内心戏。
+ * 当前：跳过第一次判猫，默认全部为猫；第二次多模态一次返回内心戏（非流式）。
  */
-export async function runCatMindPipelineStream(
+export async function runCatMindPipeline(
   mime: string,
   imageBase64: string,
   requestId: string,
-  onLine: (line: NdjsonLine) => void,
-): Promise<void> {
+): Promise<CatPipelineResult> {
   const classify: CatClassifyResult = {
     is_cat: true,
     confidence: 1,
     reason: undefined,
   };
   console.log(`[${requestId}] classify skipped, default is_cat=true`);
-
-  // --- 恢复判猫时启用以下分支并删除上方 classify 默认值 ---
-  // let classify: CatClassifyResult;
-  // try {
-  //   classify = await classifyCat(mime, imageBase64, requestId);
-  // } catch (e) {
-  //   refundDailySlot();
-  //   throw e;
-  // }
-  // if (!classify.is_cat) { refundDailySlot(); onLine({ type: "error", ... }); return; }
-  // if (classify.confidence < config.catConfidenceThreshold) { ... }
-
-  onLine({
-    type: "meta",
-    ok: true,
-    remaining: getDailyUsage(config.dailyUploadLimit).remaining,
-  });
 
   const openai = getOpenAI();
   const url = mimeToDataUrl(mime, imageBase64);
@@ -80,46 +51,36 @@ export async function runCatMindPipelineStream(
     },
   ];
 
-  let stream: AsyncIterable<{ choices: { delta?: { content?: string } }[] }>;
+  let completion;
   try {
-    stream = (await openai.chat.completions.create({
+    completion = await openai.chat.completions.create({
       model: config.visionModel,
       messages: [
         { role: "system", content: INNER_THOUGHT_SYSTEM },
         { role: "user", content: userContent },
       ],
-      stream: true,
+      stream: false,
       max_tokens: 500,
-    })) as AsyncIterable<{ choices: { delta?: { content?: string } }[] }>;
+    });
   } catch (e) {
     refundDailySlot();
-    throw e;
+    const msg = e instanceof Error ? e.message : "模型请求失败";
+    return {
+      ok: false,
+      code: "AI_ERROR",
+      message: msg,
+      remaining: getDailyUsage(config.dailyUploadLimit).remaining,
+    };
   }
 
-  let innerAcc = "";
+  const raw = (completion.choices[0]?.message?.content ?? "").trim();
+  const text = truncateUnicode(raw, config.maxInnerThoughtChars);
 
-  const emitDelta = (text: string) => {
-    if (!text) return;
-    const room = config.maxInnerThoughtChars - innerAcc.length;
-    if (room <= 0) return;
-    const slice =
-      Array.from(text).length <= room
-        ? text
-        : truncateUnicode(text, room);
-    innerAcc += slice;
-    if (slice.length) onLine({ type: "delta", text: slice });
+  console.log(`[${requestId}] inner thought:`, text.slice(0, 300));
+
+  return {
+    ok: true,
+    text,
+    remaining: getDailyUsage(config.dailyUploadLimit).remaining,
   };
-
-  try {
-    for await (const part of stream) {
-      const delta = part.choices[0]?.delta?.content ?? "";
-      emitDelta(delta);
-    }
-  } catch (e) {
-    refundDailySlot();
-    throw e;
-  }
-
-  console.log(`[${requestId}] inner thought (stream end):`, innerAcc.slice(0, 300));
-  onLine({ type: "done" });
 }

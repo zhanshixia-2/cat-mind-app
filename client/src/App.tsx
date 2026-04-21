@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  analyzePhotoStream,
+  analyzePhoto,
   authMe,
   fetchUsage,
   login,
   logout,
   type Usage,
 } from "./api";
+import { WaitCatCarousel } from "./WaitCatCarousel";
 import "./App.css";
 
 export function App() {
@@ -107,6 +108,7 @@ export function App() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (loading) return;
     if (!file) {
       setHint("请先选择一张猫图");
       return;
@@ -115,26 +117,17 @@ export function App() {
     setHint(null);
     setResult(null);
     try {
-      await analyzePhotoStream(file, {
-        onMeta: (remaining) => {
-          setLoading(false);
-          setResult("");
-          setHint(`今日剩余额度：${remaining} 张`);
-        },
-        onDelta: (text) => {
-          setResult((prev) => (prev ?? "") + text);
-        },
-        onError: (fail) => {
-          setLoading(false);
-          setResult(null);
-          setHint(`${fail.message}（剩余 ${fail.remaining} 张）`);
-          void refreshUsage();
-        },
-        onDone: () => {
-          setLoading(false);
-          void refreshUsage();
-        },
-      });
+      const out = await analyzePhoto(file);
+      setLoading(false);
+      if (!out.ok) {
+        setResult(null);
+        setHint(`${out.message}（剩余 ${out.remaining} 张）`);
+        void refreshUsage();
+        return;
+      }
+      setResult(out.text);
+      setHint(`今日剩余额度：${out.remaining} 张`);
+      void refreshUsage();
     } catch (err) {
       setLoading(false);
       setHint(err instanceof Error ? err.message : "生成失败");
@@ -192,7 +185,6 @@ export function App() {
 
       <form className="card" onSubmit={handleSubmit}>
         <label className="label">
-          选择猫主子
           <input
             ref={fileInputRef}
             type="file"
@@ -211,16 +203,16 @@ export function App() {
         {preview ? (
           <img src={preview} alt="预览" className="preview" />
         ) : null}
-        {result === null ? (
+        <WaitCatCarousel active={loading} />
+        {result === null && !loading ? (
           <button
             type="submit"
             className="btn primary"
-            disabled={loading || !file}
+            disabled={!file}
           >
-            {loading ? "生成中…" : "读取主子内心"}
+            读取主子内心
           </button>
         ) : null}
-        {hint ? <p className="hint">{hint}</p> : null}
         {result !== null ? (
           <>
             <blockquote className="result">
