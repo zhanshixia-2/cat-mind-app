@@ -6,7 +6,7 @@ import {
   login,
   logout,
 } from "./api";
-import { WaitCatCarousel } from "./WaitCatCarousel";
+import { ImmersiveWaitView } from "./ImmersiveWaitView";
 import "./App.css";
 
 export function App() {
@@ -41,6 +41,17 @@ export function App() {
   }, [authed, refreshUsage]);
 
   useEffect(() => {
+    if (loading) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [loading]);
+
+  useEffect(() => {
     if (!file) {
       setPreview(null);
       return;
@@ -63,6 +74,7 @@ export function App() {
   }
 
   async function handleLogout() {
+    setLoading(false);
     await logout();
     setAuthed(false);
     setFile(null);
@@ -180,15 +192,21 @@ export function App() {
 
   return (
     <div className="page page--app">
-      <div className="app-topbar">
-        <button
-          type="button"
-          className="btn-exit"
-          onClick={handleLogout}
-        >
-          退出
-        </button>
-      </div>
+      {loading ? (
+        <ImmersiveWaitView previewUrl={preview} onExit={handleLogout} />
+      ) : null}
+
+      {!loading ? (
+        <div className="app-topbar">
+          <button
+            type="button"
+            className="btn-exit"
+            onClick={handleLogout}
+          >
+            退出
+          </button>
+        </div>
+      ) : null}
 
       <header className="hero-with-paws">
         <p className="paw-prints" aria-hidden>
@@ -246,8 +264,6 @@ export function App() {
           )}
         </div>
 
-        <WaitCatCarousel active={loading} />
-
         {result === null && !loading ? (
           <button
             type="submit"
@@ -287,10 +303,12 @@ export function App() {
             </div>
           </>
         ) : null}
-      </form>   
-      <footer className="app-footer">
-        🐱 每只猫都有一肚子话想说
-      </footer>
+      </form>
+      {!loading ? (
+        <footer className="app-footer">
+          🐱 每只猫都有一肚子话想说
+        </footer>
+      ) : null}
     </div>
   );
 }
