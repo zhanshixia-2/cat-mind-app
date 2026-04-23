@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toBlob } from "html-to-image";
 import {
   analyzePhoto,
   authMe,
@@ -6,7 +7,7 @@ import {
   login,
   logout,
 } from "./api";
-import { ImmersiveWaitView } from "./ImmersiveWaitView";
+import { CardWaitCarousel } from "./CardWaitCarousel";
 import "./App.css";
 
 export function App() {
@@ -19,7 +20,9 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const shareCaptureRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void authMe().then((ok) => {
@@ -39,17 +42,6 @@ export function App() {
   useEffect(() => {
     if (authed) void refreshUsage();
   }, [authed, refreshUsage]);
-
-  useEffect(() => {
-    if (loading) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [loading]);
 
   useEffect(() => {
     if (!file) {
@@ -95,28 +87,61 @@ export function App() {
     handleReselect();
   }
 
-  const resultWithPrefix =
-    result !== null && result.length > 0
-      ? `【咪想告诉你：】${result}`
-      : null;
-
-  async function handleShare() {
-    if (!resultWithPrefix) return;
-    const text = `猫猫内心戏\n${resultWithPrefix}`;
+  /** 将红框内「猫图 + 心里话」截为 PNG，优先走系统分享以便存入相册，否则本地下载 */
+  async function handleSave() {
+    const el = shareCaptureRef.current;
+    if (!el || !result || saving) return;
+    setSaving(true);
+    setHint(null);
     try {
-      if (navigator.share) {
-        await navigator.share({ title: "猫猫内心戏", text });
+      // 选图预览是 blob: URL；html-to-image 的 cacheBust 会给 src 加 ? 时间戳，Chrome 下会破坏 blob 地址导致报错
+      const blob = await toBlob(el, {
+        cacheBust: false,
+        backgroundColor: "#ffffff",
+        pixelRatio: Math.min(2, typeof window !== "undefined" ? window.devicePixelRatio || 2 : 2),
+      });
+      if (!blob) {
+        setHint("生成图片失败，请重试");
         return;
       }
+      const filename = `猫猫内心戏-${new Date().toISOString().slice(0, 10)}.png`;
+      const file = new File([blob], filename, { type: "image/png" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: "猫猫内心戏",
+            text: "保存到相册",
+          });
+          setHint("请在系统分享面板中选择「存储到相簿」或「保存到相册」。");
+        } catch (err) {
+          if (err instanceof Error && err.name === "AbortError") {
+            return;
+          }
+          triggerDownload(blob, filename);
+          setHint("已尝试下载。若未进入相册，请到「文件/下载」中打开并保存。");
+        }
+        return;
+      }
+      triggerDownload(blob, filename);
+      setHint("已下载。可在相册或文件中找到图片；若需放入相册，请用系统图库打开后保存。");
     } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return;
+      setHint(
+        err instanceof Error ? err.message : "保存图片失败，请稍后再试"
+      );
+    } finally {
+      setSaving(false);
     }
-    try {
-      await navigator.clipboard.writeText(text);
-      setHint("已复制到剪贴板，可粘贴到微信等应用分享");
-    } catch {
-      setHint("复制失败，请长按文案手动复制");
-    }
+  }
+
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -192,21 +217,15 @@ export function App() {
 
   return (
     <div className="page page--app">
-      {loading ? (
-        <ImmersiveWaitView previewUrl={preview} onExit={handleLogout} />
-      ) : null}
-
-      {!loading ? (
-        <div className="app-topbar">
-          <button
-            type="button"
-            className="btn-exit"
-            onClick={handleLogout}
-          >
-            退出
-          </button>
-        </div>
-      ) : null}
+      <div className="app-topbar">
+        <button
+          type="button"
+          className="btn-exit"
+          onClick={handleLogout}
+        >
+          退出
+        </button>
+      </div>
 
       <header className="hero-with-paws">
         <p className="paw-prints" aria-hidden>
@@ -219,7 +238,9 @@ export function App() {
         <p className="section-label">选择猫主子</p>
 
         <div className="upload-zone-wrap">
-          {!preview ? (
+          {loading ? (
+            <CardWaitCarousel previewUrl={preview} />
+          ) : !preview ? (
             <label className="upload-zone">
               <input
                 ref={fileInputRef}
@@ -244,6 +265,28 @@ export function App() {
                 <span className="upload-formats">支持 JPG、PNG、WebP、GIF</span>
               </div>
             </label>
+          ) : result !== null ? (
+            <div
+              ref={shareCaptureRef}
+              className="result-capture-bounds"
+            >
+              <div className="upload-zone upload-zone--has-preview">
+                <img
+                  src={preview}
+                  alt="已选择的猫图"
+                  className="preview-in-zone"
+                />
+              </div>
+              <div className="result-box">
+                <p>
+                  <span className="result-emoji" aria-hidden>
+                    😺
+                  </span>
+                  <span className="result-prefix">咪想告诉你：</span>
+                  {result}
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="upload-zone upload-zone--has-preview">
               <img
@@ -275,40 +318,34 @@ export function App() {
         ) : null}
 
         {result !== null ? (
-          <>
-            <div className="result-box">
-              <p>
-                <span className="result-emoji" aria-hidden>
-                  😺
-                </span>
-                <span className="result-prefix">咪想告诉你：</span>
-                {result}
-              </p>
-            </div>
-            <div className="result-actions">
-              <button
-                type="button"
-                className="btn-share"
-                onClick={handleShare}
-              >
-                分享
-              </button>
-              <button
-                type="button"
-                className="btn-retry"
-                onClick={handleTryAgain}
-              >
-                再试一次
-              </button>
-            </div>
-          </>
+          <div className="result-actions">
+            <button
+              type="button"
+              className="btn-share"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              {saving ? "保存中…" : "保存"}
+            </button>
+            <button
+              type="button"
+              className="btn-retry"
+              onClick={handleTryAgain}
+            >
+              换一张试试
+            </button>
+          </div>
+        ) : null}
+
+        {hint ? (
+          <p className="hint-banner" role="status">
+            {hint}
+          </p>
         ) : null}
       </form>
-      {!loading ? (
-        <footer className="app-footer">
-          🐱 每只猫都有一肚子话想说
-        </footer>
-      ) : null}
+      <footer className="app-footer">
+        🐱 每只猫都有一肚子话想说
+      </footer>
     </div>
   );
 }

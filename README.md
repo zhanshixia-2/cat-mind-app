@@ -42,11 +42,12 @@ npm run dev
 
 ## 目录说明
 
+- `skills/design.md`：项目内**设计 / 产品规范**；新增页面或功能前应在 Cursor 中让智能体**先读**本文件，详见 `.cursor/rules/product-design-skill.mdc`。
 - `docs/DEPLOY_ALIYUN_LIGHT.md`：**阿里云轻量应用服务器** 从零部署步骤（Nginx + PM2 + 环境变量；ECS 部署方式相同，仅控制台「安全组 / 防火墙」入口不同）。
 - `POST /api/cat/analyze`：`multipart/form-data` 字段 `photo`；响应为 JSON：`{ ok: true, text, remaining }` 或 `{ ok: false, code, message, remaining }`；额度满时 HTTP 429。
 - `server/src/ai/pipeline.ts`：第一次多模态判猫（非流式）+ 第二次多模态内心戏（流式增量）
 - `server/src/ai/prompts.ts`：提示词、内心戏人设随机；旧版固定文案库已注释
-- `client/src`：React 界面
+- `client/src`：React 界面；**读猫话**在请求生成时于主白卡片内（与选图/结果同宽）展示猫图轮播等待，不再使用全屏沉浸层；退出仍用顶栏「退出」。生成出结果后可用「**保存**」将 **猫图 + 心里话** 截成一张 PNG；优先调起系统**分享/存储到相簿**（`navigator.canShare` + 图片文件），不支持的浏览器则触发本地下载。
 
 ## 额度
 
