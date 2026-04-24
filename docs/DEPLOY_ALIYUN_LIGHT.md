@@ -79,16 +79,16 @@ SSH 登录成功后，在服务器上执行。
 apt update && apt install -y git nginx
 ```
 
-### 2. 安装 Node.js 20（LTS）
+### 2. 安装 Node.js 22（LTS；本项目 `node:sqlite` 需 ≥ 22.5）
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
 apt install -y nodejs
 node -v
 npm -v
 ```
 
-应看到 `v20.x`。
+应看到 `v22.x`（**≥ 22.5** 方可使用内置 SQLite 广场与 `server/data/plaza.db`）。
 
 ### 3. 安装 PM2（进程守护，关闭 SSH 后后端仍运行）
 
@@ -252,7 +252,24 @@ nginx -t && systemctl reload nginx
 
 ---
 
-## 十一、阿里云相关链接（以官网为准）
+## 十一、SQLite 文件放哪、启动时怎么建表（轻量上一句流程）
+
+**一句话流程**：在服务器上把库文件**固定**在 **`server/data/plaza.db`**（与默认实现一致，见 `server/src/db/paths.ts`），在 **Node 第一次启动** 时**建表**；发版**不要删** `server/data/` 和 **`server/uploads/plaza/`**。需 **Node ≥ 22.5**（`node:sqlite`）。可用 `SQLITE_PATH`、`PLAZA_UPLOAD_DIR` 设**绝对路径**。
+
+| 要做什么 | 建议做法 |
+|----------|----------|
+| **文件放哪** | 库 **`server/data/plaza.db`**；图 **`server/uploads/plaza/`**；或设 `SQLITE_PATH` / `PLAZA_UPLOAD_DIR` 为绝对路径。 |
+| **谁创建文件** | 后端**启动**时建目录、打开/创建 SQLite 并执行建表（见 `server/src/db/index.ts`）。 |
+| **怎么建表** | 在代码里准备一段 `CREATE TABLE IF NOT EXISTS ...` 字符串（或分文件 migration），在「数据库连接成功后」**只执行一次**；已有表时 `IF NOT EXISTS` 不会覆盖数据。 |
+| **权限** | 跑 Node 的用户对 **`server/data`、 `server/uploads/plaza`** 有写权限；首次 `chown` / `chmod` 一次。 |
+| **Nginx 关系** | **不要**暴露 `*.db`；图仅经 **`/api/plaza/files/…`** 由后端校验后输出。 |
+| **备份** | 定期复制 **`plaza.db`** 与**上传目录**；发版前可 `cp` 到 `~/backup/`。 |
+
+本仓库已 `.gitignore` **`server/data/`、 `server/uploads/`**；**勿提交**真数据与真图到 Git。
+
+---
+
+## 十二、阿里云相关链接（以官网为准）
 
 - [轻量应用服务器文档](https://help.aliyun.com/product/58606.html)
 

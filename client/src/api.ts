@@ -106,3 +106,58 @@ export async function analyzePhoto(file: File): Promise<AnalyzeResult> {
     remaining: 0,
   };
 }
+
+/** 广场单条 */
+export type PlazaItem = {
+  id: number;
+  text: string;
+  imageUrl: string;
+  createdAt: string;
+};
+
+export type PlazaFeed = {
+  items: PlazaItem[];
+  nextCursor: number | null;
+};
+
+export async function fetchPlazaFeed(
+  cursor: number | null = null,
+): Promise<PlazaFeed> {
+  const u = new URL("/api/plaza/posts", window.location.origin);
+  if (cursor != null) u.searchParams.set("cursor", String(cursor));
+  /** 广场列表公开，无需 Cookie；带 cookie 也无妨 */
+  const res = await fetch(u.toString(), { credentials: "omit" });
+  if (!res.ok) {
+    const data = (await parseJson(res)) as { error?: string };
+    throw new Error(String(data.error ?? "加载广场失败"));
+  }
+  return (await parseJson(res)) as PlazaFeed;
+}
+
+export async function postPlazaPost(
+  image: File,
+  text: string,
+): Promise<{ ok: true; id: number; imageUrl: string }> {
+  const fd = new FormData();
+  fd.append("image", image);
+  fd.append("text", text);
+  const res = await fetch("/api/plaza/posts", {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  const data = (await parseJson(res)) as {
+    ok?: boolean;
+    id?: number;
+    imageUrl?: string;
+    error?: string;
+  };
+  if (!res.ok || !data.ok) {
+    throw new Error(String(data.error ?? "发布失败"));
+  }
+  return {
+    ok: true,
+    id: Number(data.id),
+    imageUrl: String(data.imageUrl),
+  };
+}

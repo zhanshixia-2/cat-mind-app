@@ -102,6 +102,10 @@ export const config = {
   catConfidenceThreshold: 0.7,
   /** 内心戏输出上限（固定文案一般远小于此，仅作兜底截断） */
   maxInnerThoughtChars: 30,
+  /** 年龄评照片：生成点评长度上限 */
+  maxAgeCommentChars: Number(
+    process.env.MAX_AGE_COMMENT_CHARS ?? 300,
+  ),
   /** 全站每日上传上限（进入 AI 流程即计数） */
   dailyUploadLimit: 50,
   /** 单图最大体积 */

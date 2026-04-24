@@ -2,8 +2,12 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
 import { config } from "./config.js";
+import { initDb } from "./db/index.js";
 import { authRouter } from "./routes/auth.js";
 import { catRouter } from "./routes/cat.js";
+import { plazaRouter } from "./routes/plaza.js";
+
+initDb();
 
 const app = express();
 
@@ -22,6 +26,7 @@ app.get("/api/health", (_req, res) => {
 
 app.use("/api/auth", authRouter);
 app.use("/api/cat", catRouter);
+app.use("/api/plaza", plazaRouter);
 
 app.use(
   (

@@ -5,3 +5,7 @@ dist/
 .env.*.local
 *.log
 .DS_Store
+
+# SQLite 与广场上传（部署时保留 data/ 与 uploads/ 目录，勿提交库文件与图片）
+server/data/
+server/uploads/
