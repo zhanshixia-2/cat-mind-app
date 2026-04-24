@@ -149,13 +149,20 @@ nano .env
 
 ### 2. 安装依赖并构建
 
+**必须在项目根目录**（有 `workspaces` 的 `package.json` 这一层，例如 `/var/www/cat-mind-app`）执行，**不要**只在 `client/` 里单独 `npm install`，否则 `react-router-dom` 等依赖可能装不全，Vite 会报 `Rollup failed to resolve import "react-router-dom"`。
+
+- 使用 **`npm install`** 或 **`npm ci`**（需上传/保留根目录的 `package-lock.json`）均可；构建前端需要 Vite 等**开发依赖**，安装时**不要**加 `NODE_ENV=production` 且**不要**使用 `--omit=dev`、 `--only=production` 这类会跳过 `devDependencies` 的方式，否则无法执行 `vite build`。
+- 若曾装错，可在根目录先清理再装：  
+  `rm -rf node_modules client/node_modules server/node_modules && npm install`  
+  然后执行：
+
 ```bash
 cd /var/www/cat-mind-app
 npm install
 npm run build
 ```
 
-（根目录 `package.json` 会依次构建 `client` 与 `server`。）
+（根目录 `package.json` 会依次构建 `client` 与 `server`。根目录也声明了与前端一致的 `react` / `react-router-dom` 等，保证在 workspace 下安装后必定出现在根目录的 `node_modules` 中。）
 
 ### 3. 使用 PM2 启动后端
 

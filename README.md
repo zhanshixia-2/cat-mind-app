@@ -20,6 +20,8 @@ npm install
 npm run dev
 ```
 
+生产/服务器上打包：仍在**仓库根目录**执行 `npm install` 与 `npm run build`（会构建 `client` 与 `server`）；**不要**只在 `client/` 下单独 `npm install`，并避免安装时使用 `--omit=dev`，否则 Vite 可能报无法解析 `react-router-dom` 等。详见 `docs/DEPLOY_ALIYUN_LIGHT.md` 六、2。
+
 - 前端：[http://localhost:5173](http://localhost:5173)（通过 Vite 代理访问 `/api`）
 - 后端：[http://localhost:8787](http://localhost:8787)
 
