@@ -26,3 +26,18 @@ export function ensurePlazaUploadDir(): string {
   }
   return dir;
 }
+
+/** 读猫时保存的用户原图（用于「我的」配图） */
+export function getReadingsUploadDir(): string {
+  const p = process.env.READINGS_UPLOAD_DIR?.trim();
+  if (p) return p;
+  return join(serverRoot, "uploads", "readings");
+}
+
+export function ensureReadingsUploadDir(): string {
+  const dir = getReadingsUploadDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}

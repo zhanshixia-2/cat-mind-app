@@ -5,6 +5,7 @@ import { config } from "./config.js";
 import { initDb } from "./db/index.js";
 import { authRouter } from "./routes/auth.js";
 import { catRouter } from "./routes/cat.js";
+import { myRouter } from "./routes/my.js";
 import { plazaRouter } from "./routes/plaza.js";
 
 initDb();
@@ -27,6 +28,7 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/cat", catRouter);
 app.use("/api/plaza", plazaRouter);
+app.use("/api/my", myRouter);
 
 app.use(
   (

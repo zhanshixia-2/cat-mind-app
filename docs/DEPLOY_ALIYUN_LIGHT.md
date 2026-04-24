@@ -130,8 +130,7 @@ nano .env
 
 | 变量                                     | 说明                                                                  |
 | -------------------------------------- | ------------------------------------------------------------------- |
-| `APP_PASSWORD`                         | 访问密码                                                                |
-| `JWT_SECRET`                           | 长随机字符串                                                              |
+| `JWT_SECRET`                           | 长随机字符串（用于登录 Cookie 签名）                                              |
 | `DASHSCOPE_API_KEY` 或 `OPENAI_API_KEY` | 百炼 / OpenAI Key                                                     |
 | `PORT`                                 | 后端端口，如 `8787`                                                       |
 | `NODE_ENV`                             | 生产环境填 `production`                                                  |

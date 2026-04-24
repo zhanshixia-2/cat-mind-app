@@ -9,24 +9,67 @@ async function parseJson(res: Response): Promise<unknown> {
   }
 }
 
-export async function authMe(): Promise<boolean> {
+export type AuthUser = {
+  id: number;
+  email: string;
+};
+
+export type MeResult =
+  | { ok: true; user: AuthUser }
+  | { ok: false; code?: string };
+
+export async function authMe(): Promise<MeResult> {
   const res = await fetch("/api/auth/me", { credentials: "include" });
-  if (!res.ok) return false;
-  const data = (await parseJson(res)) as { ok?: boolean };
-  return data.ok === true;
+  const data = (await parseJson(res)) as MeResult & { user?: AuthUser };
+  if (!res.ok || !data.ok) {
+    return { ok: false, code: "UNAUTHORIZED" };
+  }
+  if (data.user && typeof data.user.id === "number" && data.user.email) {
+    return { ok: true, user: data.user };
+  }
+  return { ok: false };
 }
 
-export async function login(password: string): Promise<void> {
+export async function registerEmail(
+  email: string,
+  password: string,
+): Promise<AuthUser> {
+  const res = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: jsonHeaders,
+    credentials: "include",
+    body: JSON.stringify({ email, password }),
+  });
+  const data = (await parseJson(res)) as {
+    ok?: boolean;
+    user?: AuthUser;
+    error?: string;
+  };
+  if (!res.ok || !data.ok || !data.user) {
+    throw new Error(String(data.error ?? "注册失败"));
+  }
+  return data.user;
+}
+
+export async function loginEmail(
+  email: string,
+  password: string,
+): Promise<AuthUser> {
   const res = await fetch("/api/auth/login", {
     method: "POST",
     headers: jsonHeaders,
     credentials: "include",
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) {
-    const data = (await parseJson(res)) as { error?: string };
-    throw new Error(data.error ?? "登录失败");
+  const data = (await parseJson(res)) as {
+    ok?: boolean;
+    user?: AuthUser;
+    error?: string;
+  };
+  if (!res.ok || !data.ok || !data.user) {
+    throw new Error(String(data.error ?? "登录失败"));
   }
+  return data.user;
 }
 
 export async function logout(): Promise<void> {
@@ -60,11 +103,11 @@ export type AnalyzeSuccess = {
   ok: true;
   text: string;
   remaining: number;
+  readingId: number;
 };
 
 export type AnalyzeResult = AnalyzeSuccess | AnalyzeFail;
 
-/** multipart 上传；响应为 JSON（{ ok: true, text, remaining } 或 { ok: false, ... }） */
 export async function analyzePhoto(file: File): Promise<AnalyzeResult> {
   const fd = new FormData();
   fd.append("photo", file);
@@ -84,7 +127,10 @@ export async function analyzePhoto(file: File): Promise<AnalyzeResult> {
     };
   }
 
-  const data = (await parseJson(res)) as AnalyzeResult & { error?: string };
+  const data = (await parseJson(res)) as AnalyzeResult & {
+    error?: string;
+    readingId?: number;
+  };
 
   if (!res.ok) {
     return {
@@ -95,8 +141,27 @@ export async function analyzePhoto(file: File): Promise<AnalyzeResult> {
     };
   }
 
-  if (typeof data.ok === "boolean") {
-    return data as AnalyzeResult;
+  if (data.ok === true && typeof data.text === "string") {
+    const readingId =
+      typeof data.readingId === "number" ? data.readingId : -1;
+    if (readingId < 1) {
+      return {
+        ok: false,
+        code: "BAD_RESPONSE",
+        message: "缺少 readingId",
+        remaining: 0,
+      };
+    }
+    return {
+      ok: true,
+      text: data.text,
+      remaining: data.remaining,
+      readingId,
+    };
+  }
+
+  if (typeof data.ok === "boolean" && data.ok === false) {
+    return data as AnalyzeFail;
   }
 
   return {
@@ -107,7 +172,6 @@ export async function analyzePhoto(file: File): Promise<AnalyzeResult> {
   };
 }
 
-/** 广场单条 */
 export type PlazaItem = {
   id: number;
   text: string;
@@ -125,7 +189,6 @@ export async function fetchPlazaFeed(
 ): Promise<PlazaFeed> {
   const u = new URL("/api/plaza/posts", window.location.origin);
   if (cursor != null) u.searchParams.set("cursor", String(cursor));
-  /** 广场列表公开，无需 Cookie；带 cookie 也无妨 */
   const res = await fetch(u.toString(), { credentials: "omit" });
   if (!res.ok) {
     const data = (await parseJson(res)) as { error?: string };
@@ -137,10 +200,12 @@ export async function fetchPlazaFeed(
 export async function postPlazaPost(
   image: File,
   text: string,
+  userReadingId: number,
 ): Promise<{ ok: true; id: number; imageUrl: string }> {
   const fd = new FormData();
   fd.append("image", image);
   fd.append("text", text);
+  fd.append("userReadingId", String(userReadingId));
   const res = await fetch("/api/plaza/posts", {
     method: "POST",
     credentials: "include",
@@ -160,4 +225,37 @@ export async function postPlazaPost(
     id: Number(data.id),
     imageUrl: String(data.imageUrl),
   };
+}
+
+export type MyReadingItem = {
+  id: number;
+  text: string;
+  createdAt: string;
+  /** 曾发过广场的长图；未发广场则为 null */
+  imageUrl: string | null;
+  plaza: {
+    id: number;
+    onPlaza: boolean;
+    canTakedown: boolean;
+  } | null;
+};
+
+export async function fetchMyReadings(): Promise<{ items: MyReadingItem[] }> {
+  const res = await fetch("/api/my/readings", { credentials: "include" });
+  if (!res.ok) {
+    const data = (await parseJson(res)) as { error?: string };
+    throw new Error(String(data.error ?? "加载失败"));
+  }
+  return (await parseJson(res)) as { items: MyReadingItem[] };
+}
+
+export async function takedownPlazaPost(postId: number): Promise<void> {
+  const res = await fetch(`/api/my/plaza/${postId}/takedown`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const data = (await parseJson(res)) as { error?: string };
+    throw new Error(String(data.error ?? "下架失败"));
+  }
 }

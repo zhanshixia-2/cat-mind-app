@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toBlob } from "html-to-image";
-import {
-  analyzePhoto,
-  fetchUsage,
-  postPlazaPost,
-} from "./api";
+import { analyzePhoto, fetchUsage, postPlazaPost } from "./api";
 import { CardWaitCarousel } from "./CardWaitCarousel";
 import "./App.css";
 
-export function HomePage() {
+export function ReadCatPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [readingId, setReadingId] = useState<number | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [sharingPlaza, setSharingPlaza] = useState(false);
@@ -105,7 +102,12 @@ export function HomePage() {
 
   async function handleShareToPlaza() {
     const el = shareCaptureRef.current;
-    if (!el || !result || sharingPlaza) return;
+    if (!el || !result || sharingPlaza || readingId == null) {
+      if (readingId == null) {
+        setHint("无法关联读猫记录，请重新生成一次");
+      }
+      return;
+    }
     setSharingPlaza(true);
     setHint(null);
     try {
@@ -120,7 +122,7 @@ export function HomePage() {
       }
       const f = new File([blob], "plaza-tile.png", { type: "image/png" });
       const text = `【咪想告诉你：】${result}`;
-      await postPlazaPost(f, text);
+      await postPlazaPost(f, text, readingId);
       setPlazaShared(true);
       setHint("已同步到「广场」，其他主子也能看到啦～");
     } catch (e) {
@@ -135,6 +137,7 @@ export function HomePage() {
   function handleReselect() {
     setFile(null);
     setResult(null);
+    setReadingId(null);
     setHint(null);
     setLoading(false);
     resetPlazaShareState();
@@ -155,6 +158,7 @@ export function HomePage() {
     setLoading(true);
     setHint(null);
     setResult(null);
+    setReadingId(null);
     resetPlazaShareState();
     try {
       const out = await analyzePhoto(file);
@@ -166,6 +170,7 @@ export function HomePage() {
         return;
       }
       setResult(out.text);
+      setReadingId(out.readingId);
       setHint(`今日剩余额度：${out.remaining} 张`);
       void refreshUsage();
     } catch (err) {
@@ -205,6 +210,7 @@ export function HomePage() {
                   setFile(f ?? null);
                   if (f) {
                     setResult(null);
+                    setReadingId(null);
                     setHint(null);
                     setLoading(false);
                     resetPlazaShareState();
@@ -281,41 +287,23 @@ export function HomePage() {
             >
               {saving ? "保存中…" : "保存"}
             </button>
+            {showPlazaPrompt ? (
+              <button
+                type="button"
+                className="btn-share"
+                onClick={handleShareToPlaza}
+                disabled={sharingPlaza}
+              >
+                {sharingPlaza ? "发布中…" : "发布"}
+              </button>
+        ) : null}
             <button
               type="button"
               className="btn-retry"
               onClick={handleTryAgain}
             >
-              换一张试试
+              换一张
             </button>
-          </div>
-        ) : null}
-
-        {showPlazaPrompt ? (
-          <div className="plaza-prompt" role="region" aria-label="同步到广场">
-            <p className="plaza-prompt__title">要不要让别的主子也听听这段「喵言喵语」？</p>
-            <p className="plaza-prompt__sub">
-              同意后会用与「保存」同一张长图，出现在「猫猫心里话广场」里；不含你的登录名。
-            </p>
-            <div className="plaza-prompt__actions">
-              <button
-                type="button"
-                className="btn-plaza-ok"
-                onClick={handleShareToPlaza}
-                disabled={sharingPlaza}
-              >
-                {sharingPlaza ? "发布中…" : "好，去广场分享"}
-              </button>
-              <button
-                type="button"
-                className="btn-plaza-skip"
-                onClick={() => {
-                  setSharePlazaDismissed(true);
-                }}
-              >
-                暂不分享
-              </button>
-            </div>
           </div>
         ) : null}
 

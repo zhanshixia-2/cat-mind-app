@@ -87,7 +87,6 @@ function resolveVisionModel(): string {
 
 export const config = {
   port: Number(process.env.PORT ?? 8787),
-  appPassword: envTrim("APP_PASSWORD", "dev-password-change-me"),
   jwtSecret: envTrim("JWT_SECRET", "dev-jwt-secret-change-me-in-production"),
   /** 百炼 / DashScope：填 DASHSCOPE_API_KEY 或 OPENAI_API_KEY（二选一） */
   openaiApiKey: sanitizeApiKey(rawApiKey),

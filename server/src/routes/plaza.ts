@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
+import { createReadStream, existsSync, unlinkSync } from "node:fs";
 import { extname, join, basename } from "node:path";
 import { Router } from "express";
 import multer from "multer";
 import { getDb } from "../db/index.js";
 import { ensurePlazaUploadDir, getPlazaUploadDir } from "../db/paths.js";
-import {
-  COOKIE,
-  authorIdFromAuthToken,
-  requireAuth,
-} from "../middleware/authJwt.js";
+import { requireAuth } from "../middleware/authJwt.js";
 
 const router = Router();
 
@@ -121,17 +117,18 @@ router.post(
     });
   },
   (req, res) => {
-    const token = req.cookies?.[COOKIE];
-    const authorId = authorIdFromAuthToken(
-      typeof token === "string" ? token : undefined,
-    );
-    if (!authorId) {
-      res.status(401).json({ error: "需要登录" });
-      return;
-    }
     const file = req.file;
     if (!file) {
       res.status(400).json({ error: "请上传图片（与保存时相同的长图）" });
+      return;
+    }
+    const userId = req.userId!;
+    const userReadingId = Number.parseInt(
+      String(req.body?.userReadingId ?? req.body?.user_reading_id ?? ""),
+      10,
+    );
+    if (!Number.isInteger(userReadingId) || userReadingId < 1) {
+      res.status(400).json({ error: "需要 userReadingId" });
       return;
     }
     const text = safeText(req.body?.text);
@@ -149,13 +146,84 @@ router.post(
       res.status(500).json({ error: "文件写入失败" });
       return;
     }
+
     const db = getDb();
+    const readRow = db
+      .prepare(
+        "SELECT id, result_text FROM user_readings WHERE id = ? AND user_id = ?",
+      )
+      .get(userReadingId, userId) as
+      | { id: number; result_text: string }
+      | undefined;
+    if (!readRow) {
+      try {
+        unlinkSync(abs);
+      } catch {
+        /* ignore */
+      }
+      res.status(403).json({ error: "该读猫记录不存在或无权操作" });
+      return;
+    }
+    const expect =
+      "【咪想告诉你：】" + readRow.result_text;
+    if (text !== readRow.result_text && text !== expect) {
+      try {
+        unlinkSync(abs);
+      } catch {
+        /* ignore */
+      }
+      res.status(400).json({ error: "文案与读猫记录不一致" });
+      return;
+    }
+    const textToStore = expect;
+
+    const ex = db
+      .prepare("SELECT id, status, image_filename FROM plaza_posts WHERE user_reading_id = ?")
+      .get(userReadingId) as
+      | { id: number; status: string; image_filename: string }
+      | undefined;
+
+    if (ex?.status === "active") {
+      try {
+        unlinkSync(abs);
+      } catch {
+        /* ignore */
+      }
+      res.status(409).json({ error: "该记录已在广场展示，请勿重复发布" });
+      return;
+    }
+
+    const authorId = `u${userId}`;
+
+    if (ex && ex.status === "hidden") {
+      const oldPath = join(getPlazaUploadDir(), ex.image_filename);
+      if (ex.image_filename && existsSync(oldPath)) {
+        try {
+          unlinkSync(oldPath);
+        } catch {
+          /* ignore */
+        }
+      }
+      db.prepare(
+        `UPDATE plaza_posts
+         SET user_id = ?, text_content = ?, image_filename = ?, status = 'active'
+         WHERE id = ?`,
+      ).run(userId, textToStore, filename, ex.id);
+      res.status(201).json({
+        ok: true,
+        id: ex.id,
+        imageUrl: `/api/plaza/files/${encodeURIComponent(filename)}`,
+        updated: true,
+      });
+      return;
+    }
+
     const info = db
       .prepare(
-        `INSERT INTO plaza_posts (author_id, text_content, image_filename)
-         VALUES (?, ?, ?)`,
+        `INSERT INTO plaza_posts (author_id, user_id, user_reading_id, text_content, image_filename)
+         VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(authorId, text, filename);
+      .run(authorId, userId, userReadingId, textToStore, filename);
 
     res.status(201).json({
       ok: true,

@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { PlazaItem } from "./api";
 import { fetchPlazaFeed } from "./api";
+import { AuthedContext } from "./appContext";
 import "./App.css";
 
 export function PlazaPage() {
+  const { authed } = useContext(AuthedContext);
+  const navigate = useNavigate();
   const [items, setItems] = useState<PlazaItem[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -40,12 +44,7 @@ export function PlazaPage() {
 
   return (
     <>
-      <header className="plaza-hero">
-        <h1 className="plaza-hero__title">猫猫心里话广场</h1>
-        <p className="plaza-hero__sub">看看别的主子说了啥</p>
-      </header>
-
-      <div className="plaza-page">
+      <div className="plaza-page plaza-page--with-fixed-cta">
         {initialLoading && items.length === 0 ? (
           <p className="plaza-state">加载中…</p>
         ) : null}
@@ -89,6 +88,25 @@ export function PlazaPage() {
           </div>
         ) : null}
       </div>
+
+      <aside className="plaza-dock" aria-label="读猫话引导">
+        <div className="plaza-hero-cta plaza-hero-cta--in-dock">
+          <p className="plaza-hero-cta__hint">想听自家主子心里想什么？</p>
+          <button
+            type="button"
+            className="btn-plaza-ok btn-plaza-ok--wide"
+            onClick={() => {
+              if (authed) {
+                void navigate("/read");
+                return;
+              }
+              void navigate("/login?redirect=" + encodeURIComponent("/read"));
+            }}
+          >
+            读猫话
+          </button>
+        </div>
+      </aside>
     </>
   );
 }

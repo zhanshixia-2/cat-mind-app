@@ -1,44 +1,29 @@
-import { createHash, randomUUID } from "node:crypto";
 import type { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config.js";
 
 const COOKIE = "cat_mind_auth";
 
-export function signAuthCookie(): string {
+/** 邮箱登录用户 JWT，`sub` 为 `users.id` 字符串 */
+export function signUserToken(userId: number): string {
   return jwt.sign(
-    { v: 1, typ: "cat-mind", plz: randomUUID() },
+    { v: 1, typ: "cat-mind", sub: String(userId) },
     config.jwtSecret,
-    {
-      expiresIn: "7d",
-    },
+    { expiresIn: "7d" },
   );
 }
 
-export function verifyAuthToken(token: string): boolean {
-  try {
-    const p = jwt.verify(token, config.jwtSecret) as { typ?: string };
-    return p.typ === "cat-mind";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 广场帖作者标识：新 Cookie 带 `plz`；旧 Cookie 用 token 的哈希兜底（稳定、可区分会话）
- */
-export function authorIdFromAuthToken(
-  token: string | undefined,
-): string | null {
-  if (!token || !verifyAuthToken(token)) return null;
+export function getUserIdFromToken(token: string | undefined): number | null {
+  if (!token) return null;
   try {
     const p = jwt.verify(token, config.jwtSecret) as {
       typ?: string;
-      plz?: string;
+      sub?: string;
     };
-    if (p.typ !== "cat-mind") return null;
-    if (typeof p.plz === "string" && p.plz.length > 0) return p.plz;
-    return `legacy:${createHash("sha256").update(token).digest("hex").slice(0, 32)}`;
+    if (p.typ !== "cat-mind" || typeof p.sub !== "string") return null;
+    const id = Number.parseInt(p.sub, 10);
+    if (!Number.isInteger(id) || id < 1) return null;
+    return id;
   } catch {
     return null;
   }
@@ -46,10 +31,14 @@ export function authorIdFromAuthToken(
 
 export const requireAuth: RequestHandler = (req, res, next) => {
   const token = req.cookies?.[COOKIE];
-  if (!token || !verifyAuthToken(token)) {
+  const userId = getUserIdFromToken(
+    typeof token === "string" ? token : undefined,
+  );
+  if (userId == null) {
     res.status(401).json({ error: "需要登录", code: "UNAUTHORIZED" });
     return;
   }
+  req.userId = userId;
   next();
 };
 

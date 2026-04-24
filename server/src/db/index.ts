@@ -18,7 +18,49 @@ CREATE INDEX IF NOT EXISTS idx_plaza_posts_list
   ON plaza_posts (status, id);
 `;
 
+const MIG_USERS = `
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS user_readings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  result_text TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_readings_user_id ON user_readings (user_id, id DESC);
+`;
+
 let db: DatabaseSync | null = null;
+
+function migratePlazaColumns(database: DatabaseSync) {
+  const rows = database
+    .prepare("PRAGMA table_info(plaza_posts)")
+    .all() as { name: string }[];
+  const names = new Set(rows.map((r) => r.name));
+  if (!names.has("user_id")) {
+    database.exec("ALTER TABLE plaza_posts ADD COLUMN user_id INTEGER");
+  }
+  if (!names.has("user_reading_id")) {
+    database.exec("ALTER TABLE plaza_posts ADD COLUMN user_reading_id INTEGER");
+  }
+}
+
+function migrateUserReadingsSourceImage(database: DatabaseSync) {
+  const rows = database
+    .prepare("PRAGMA table_info(user_readings)")
+    .all() as { name: string }[];
+  const names = new Set(rows.map((r) => r.name));
+  if (!names.has("source_image_filename")) {
+    database.exec(
+      "ALTER TABLE user_readings ADD COLUMN source_image_filename TEXT",
+    );
+  }
+}
 
 function ensureDirForFile(file: string) {
   const d = dirname(file);
@@ -38,6 +80,9 @@ export function initDb(): DatabaseSync {
   db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL");
   db.exec(MIG_001);
+  db.exec(MIG_USERS);
+  migratePlazaColumns(db);
+  migrateUserReadingsSourceImage(db);
   return db;
 }
 
