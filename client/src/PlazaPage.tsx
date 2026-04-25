@@ -1,12 +1,10 @@
-import { useCallback, useContext, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { PlazaItem } from "./api";
 import { fetchPlazaFeed } from "./api";
-import { AuthedContext } from "./appContext";
 import "./App.css";
 
 export function PlazaPage() {
-  const { authed } = useContext(AuthedContext);
   const navigate = useNavigate();
   const [items, setItems] = useState<PlazaItem[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
@@ -96,11 +94,7 @@ export function PlazaPage() {
             type="button"
             className="btn-plaza-ok btn-plaza-ok--wide"
             onClick={() => {
-              if (authed) {
-                void navigate("/read");
-                return;
-              }
-              void navigate("/login?redirect=" + encodeURIComponent("/read"));
+              void navigate("/read");
             }}
           >
             读猫话

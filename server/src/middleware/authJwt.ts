@@ -42,4 +42,16 @@ export const requireAuth: RequestHandler = (req, res, next) => {
   next();
 };
 
+/** 有 Cookie 则设置 `req.userId`，无则继续（用于可选登录接口） */
+export const optionalAuth: RequestHandler = (req, _res, next) => {
+  const token = req.cookies?.[COOKIE];
+  const userId = getUserIdFromToken(
+    typeof token === "string" ? token : undefined,
+  );
+  if (userId != null) {
+    req.userId = userId;
+  }
+  next();
+};
+
 export { COOKIE };

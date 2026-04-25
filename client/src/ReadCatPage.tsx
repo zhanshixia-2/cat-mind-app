@@ -1,10 +1,54 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toBlob } from "html-to-image";
-import { analyzePhoto, fetchUsage, postPlazaPost } from "./api";
+import {
+  analyzePhoto,
+  fetchUsage,
+  persistReading,
+  postPlazaPost,
+} from "./api";
+import { AuthedContext } from "./appContext";
 import { CardWaitCarousel } from "./CardWaitCarousel";
+import { compressImageFileIfLarge } from "./imageCompress";
 import "./App.css";
 
+const READ_DRAFT_KEY = "cat_mind_read_draft_v1";
+
+function readCatUserError(unknown: unknown, fallback: string): string {
+  if (!(unknown instanceof Error)) {
+    return fallback;
+  }
+  const m = unknown.message;
+  if (m.length > 120 && /<!DOCTYPE|<html|nginx|Request Entity/si.test(m)) {
+    return "网络或网关异常（常由图片或上传体积引发）。可换小图、检查网络，或让管理员在 Nginx/网关中调大允许上传的体积。";
+  }
+  if (m === "Failed to fetch") {
+    return "网络未连接或无法访问服务，请检查网络后重试。";
+  }
+  if (m.length < 500) {
+    return m;
+  }
+  return fallback;
+}
+
+function base64ToFile(base64: string, mime: string): File {
+  const bstr = atob(base64);
+  let n = bstr.length;
+  const u8 = new Uint8Array(n);
+  while (n--) u8[n] = bstr.charCodeAt(n);
+  const ext = mime.includes("png")
+    ? "png"
+    : mime.includes("webp")
+      ? "webp"
+      : mime.includes("gif")
+        ? "gif"
+        : "jpg";
+  return new File([u8], `draft.${ext}`, { type: mime || "image/jpeg" });
+}
+
 export function ReadCatPage() {
+  const { authed } = useContext(AuthedContext);
+  const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -15,8 +59,17 @@ export function ReadCatPage() {
   const [sharingPlaza, setSharingPlaza] = useState(false);
   const [plazaShared, setPlazaShared] = useState(false);
   const [sharePlazaDismissed, setSharePlazaDismissed] = useState(false);
+  const [resumeIntent, setResumeIntent] = useState<
+    "save" | "publish" | null
+  >(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shareCaptureRef = useRef<HTMLDivElement>(null);
+  const saveLatestRef = useRef<() => Promise<void>>(
+    () => Promise.resolve(),
+  );
+  const plazaLatestRef = useRef<() => Promise<void>>(
+    () => Promise.resolve(),
+  );
 
   const refreshUsage = useCallback(async () => {
     try {
@@ -40,12 +93,125 @@ export function ReadCatPage() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  const goLoginWithDraft = useCallback(
+    (pending: "save" | "publish") => {
+      if (!file || !result) return;
+      void (async () => {
+        let f = file;
+        try {
+          f = await compressImageFileIfLarge(file);
+          setFile(f);
+        } catch (e) {
+          setHint(readCatUserError(e, "处理图片时出错，请重试或换小图。"));
+          return;
+        }
+        const fr = new FileReader();
+        fr.onload = () => {
+          const dataUrl = fr.result as string;
+          const i = dataUrl.indexOf(",");
+          const b64 = i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+          const mime = f.type || "image/jpeg";
+          try {
+            sessionStorage.setItem(
+              READ_DRAFT_KEY,
+              JSON.stringify({
+                v: 1,
+                imageBase64: b64,
+                mime,
+                result,
+                pending,
+              }),
+            );
+          } catch {
+            setHint("图片或文案过大，无法暂存。请换一张更小的图，或先登录再读猫。");
+            return;
+          }
+          void navigate("/login?redirect=" + encodeURIComponent("/read"));
+        };
+        fr.onerror = () => {
+          setHint("无法读取图片，请重试或先登录。");
+        };
+        fr.readAsDataURL(f);
+      })();
+    },
+    [file, result, navigate],
+  );
+
+  useEffect(() => {
+    if (!authed) return;
+    const raw = sessionStorage.getItem(READ_DRAFT_KEY);
+    if (!raw) return;
+    type DraftV1 = {
+      v: number;
+      imageBase64: string;
+      mime: string;
+      result: string;
+      pending: "save" | "publish";
+    };
+    let d: DraftV1;
+    try {
+      d = JSON.parse(raw) as DraftV1;
+    } catch {
+      return;
+    }
+    if (d.v !== 1 || !d.imageBase64 || !d.result) {
+      return;
+    }
+    sessionStorage.removeItem(READ_DRAFT_KEY);
+    let f = base64ToFile(d.imageBase64, d.mime);
+    setFile(f);
+    setResult(d.result);
+    setLoading(false);
+    setHint("正在保存你的读猫记录…");
+    void (async () => {
+      try {
+        f = await compressImageFileIfLarge(f);
+        setFile(f);
+        const { readingId: rid } = await persistReading(f, d.result);
+        setReadingId(rid);
+        setHint(null);
+        setPlazaShared(false);
+        setSharePlazaDismissed(false);
+        setResumeIntent(d.pending);
+      } catch (e) {
+        try {
+          sessionStorage.setItem(READ_DRAFT_KEY, raw);
+        } catch {
+          /* ignore */
+        }
+        setHint(
+          readCatUserError(
+            e,
+            "保存读猫记录时出错，请重试。",
+          ),
+        );
+      }
+    })();
+  }, [authed]);
+
+  useEffect(() => {
+    if (!resumeIntent || result == null || readingId == null) {
+      return;
+    }
+    const what = resumeIntent;
+    setResumeIntent(null);
+    const t = window.setTimeout(() => {
+      if (what === "save") void saveLatestRef.current();
+      else void plazaLatestRef.current();
+    }, 200);
+    return () => clearTimeout(t);
+  }, [resumeIntent, result, readingId]);
+
   function resetPlazaShareState() {
     setPlazaShared(false);
     setSharePlazaDismissed(false);
   }
 
   async function handleSave() {
+    if (!authed) {
+      goLoginWithDraft("save");
+      return;
+    }
     const el = shareCaptureRef.current;
     if (!el || !result || saving) return;
     setSaving(true);
@@ -83,7 +249,7 @@ export function ReadCatPage() {
       setHint("已下载。可在相册或文件中找到图片；若需放入相册，请用系统图库打开后保存。");
     } catch (err) {
       setHint(
-        err instanceof Error ? err.message : "保存图片失败，请稍后再试"
+        readCatUserError(err, "保存图片时出错，请稍后再试。"),
       );
     } finally {
       setSaving(false);
@@ -101,11 +267,16 @@ export function ReadCatPage() {
   }
 
   async function handleShareToPlaza() {
+    if (!authed) {
+      goLoginWithDraft("publish");
+      return;
+    }
     const el = shareCaptureRef.current;
-    if (!el || !result || sharingPlaza || readingId == null) {
-      if (readingId == null) {
-        setHint("无法关联读猫记录，请重新生成一次");
-      }
+    if (!el || !result || sharingPlaza) {
+      return;
+    }
+    if (readingId == null) {
+      setHint("无法关联读猫记录，请重新生成一次");
       return;
     }
     setSharingPlaza(true);
@@ -127,7 +298,10 @@ export function ReadCatPage() {
       setHint("已同步到「广场」，其他主子也能看到啦～");
     } catch (e) {
       setHint(
-        e instanceof Error ? e.message : "发布到广场失败，请稍后再试"
+        readCatUserError(
+          e,
+          "发布到广场失败，请稍后再试。",
+        ),
       );
     } finally {
       setSharingPlaza(false);
@@ -161,7 +335,9 @@ export function ReadCatPage() {
     setReadingId(null);
     resetPlazaShareState();
     try {
-      const out = await analyzePhoto(file);
+      const ready = await compressImageFileIfLarge(file);
+      setFile(ready);
+      const out = await analyzePhoto(ready);
       setLoading(false);
       if (!out.ok) {
         setResult(null);
@@ -175,10 +351,13 @@ export function ReadCatPage() {
       void refreshUsage();
     } catch (err) {
       setLoading(false);
-      setHint(err instanceof Error ? err.message : "生成失败");
+      setHint(readCatUserError(err, "生成失败，请重试。"));
       void refreshUsage();
     }
   }
+
+  saveLatestRef.current = () => handleSave();
+  plazaLatestRef.current = () => handleShareToPlaza();
 
   const showPlazaPrompt =
     result !== null && !loading && !plazaShared && !sharePlazaDismissed;
@@ -307,11 +486,6 @@ export function ReadCatPage() {
           </div>
         ) : null}
 
-        {hint ? (
-          <p className="hint-banner" role="status">
-            {hint}
-          </p>
-        ) : null}
       </form>
     </>
   );

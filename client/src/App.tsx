@@ -68,14 +68,7 @@ export function App() {
           <Route path="/" element={<AppLayout />}>
             <Route index element={<PlazaPage />} />
             <Route path="login" element={<LoginPage />} />
-            <Route
-              path="read"
-              element={
-                <RequireAuth>
-                  <ReadCatPage />
-                </RequireAuth>
-              }
-            />
+            <Route path="read" element={<ReadCatPage />} />
             <Route
               path="me"
               element={

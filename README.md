@@ -25,7 +25,7 @@ npm run dev
 - 前端：[http://localhost:5173](http://localhost:5173)（通过 Vite 代理访问 `/api`）
 - 后端：[http://localhost:8787](http://localhost:8787)
 
-在应用内**注册/登录邮箱账号**后，再使用「读猫话」上传图片。首页为**广场**（可不登录浏览）；读猫话与「我的猫猫」需登录。
+在应用内**输入邮箱+密码**即可（`POST /api/auth/enter`：无账号则自动注册，有账号则登录），可同步到「我的猫猫」、发广场。服务端仍保留 `POST /api/auth/register` 与 `POST /api/auth/login` 供直接调用或兼容旧客户端。首页为**广场**（可不登录浏览）；**读猫话**可先不上传账号完成读图与内心戏，点「保存」或「发布」时再登录，登录后恢复草稿、落库并用于发广场。仅在「我的猫猫」中查看记录时**需登录**。
 
 ## 环境变量
 
@@ -46,7 +46,7 @@ npm run dev
 
 - `skills/design.md`：项目内**设计 / 产品规范**；新增页面或功能前应在 Cursor 中让智能体**先读**本文件，详见 `.cursor/rules/product-design-skill.mdc`。
 - `docs/DEPLOY_ALIYUN_LIGHT.md`：**阿里云轻量应用服务器** 从零部署步骤（Nginx + PM2 + 环境变量；ECS 部署方式相同，仅控制台「安全组 / 防火墙」入口不同）。
-- `POST /api/cat/analyze`：`multipart/form-data` 字段 `photo`；响应为 JSON：`{ ok: true, text, remaining }` 或 `{ ok: false, code, message, remaining }`；额度满时 HTTP 429。
+- `POST /api/cat/analyze`：可选登录；`multipart/form-data` 字段 `photo`；已登录时写入 `user_readings` 并返回 `readingId`；**未登录**时仍消耗全站日额度并返回内心戏，但 `readingId` 为 `null`，不落库。`POST /api/cat/persist-reading`：需登录，将已生成的 `photo`+`resultText` 写入 `user_readings`（不重复扣日额度，供登录后同步草稿并用于发广场）。其它响应同前；额度满时 HTTP 429。
 - `server/src/ai/pipeline.ts`：第一次多模态判猫（非流式）+ 第二次多模态内心戏（流式增量）
 - `server/src/ai/prompts.ts`：提示词、内心戏人设随机；旧版固定文案库已注释
 - `client/src`：`/` 为**广场**；`/read` 读猫话；`/me` 我的猫猫；`/login` 邮箱注册/登录（无邮箱验证）。读猫话成功会写入 `user_readings` 并**落盘本次上传的猫图**（`source_image_filename`，目录见下），「我的」配图优先用已发广场的合成图（`GET /api/my/plaza-files/:name`），否则用读猫原图（`GET /api/my/reading-files/:name`）；**升级前**的历史记录若无落盘图，「我的」仍可能只有文字卡。发广场须带 `userReadingId`。「我的」里可对已上广场条目**下架**（`POST /api/my/plaza/:id/takedown`）；公开 `GET /api/plaza/files/:name` 仅 `active`。鉴权为 **JWT Cookie**（`sub` = 用户 id）。图与库路径见上条说明；评论/点赞未实现。

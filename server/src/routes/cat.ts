@@ -8,7 +8,7 @@ import { config } from "../config.js";
 import { getDb } from "../db/index.js";
 import { ensureReadingsUploadDir } from "../db/paths.js";
 import { runCatMindPipeline } from "../ai/pipeline.js";
-import { requireAuth } from "../middleware/authJwt.js";
+import { optionalAuth, requireAuth } from "../middleware/authJwt.js";
 import {
   getDailyUsage,
   refundDailySlot,
@@ -46,7 +46,7 @@ const handleUpload: RequestHandler = (req, res, next) => {
 
 export const catRouter = Router();
 
-catRouter.get("/usage", requireAuth, (_req, res) => {
+catRouter.get("/usage", (_req, res) => {
   const u = getDailyUsage(config.dailyUploadLimit);
   res.json(u);
 });
@@ -74,6 +74,13 @@ const handleAnalyze: RequestHandler = async (req, res) => {
   try {
     const result = await runCatMindPipeline(mime, imageBase64, requestId);
     if (result.ok) {
+      if (req.userId == null) {
+        res.json({
+          ...result,
+          readingId: null,
+        });
+        return;
+      }
       const sourceName = `${randomUUID()}${extForUploadedPhoto(mime)}`;
       const abs = join(ensureReadingsUploadDir(), sourceName);
       try {
@@ -91,7 +98,7 @@ const handleAnalyze: RequestHandler = async (req, res) => {
             `INSERT INTO user_readings (user_id, result_text, source_image_filename)
              VALUES (?, ?, ?)`,
           )
-          .run(req.userId!, result.text, sourceName);
+          .run(req.userId, result.text, sourceName);
       } catch (dbErr) {
         try {
           unlinkSync(abs);
@@ -120,4 +127,64 @@ const handleAnalyze: RequestHandler = async (req, res) => {
   }
 };
 
-catRouter.post("/analyze", requireAuth, handleUpload, handleAnalyze);
+const handlePersistReading: RequestHandler = async (req, res) => {
+  if (req.userId == null) {
+    res.status(401).json({ error: "需要登录", code: "UNAUTHORIZED" });
+    return;
+  }
+  if (!req.file?.buffer?.length) {
+    res.status(400).json({ error: "请上传图片文件", code: "NO_FILE" });
+    return;
+  }
+  const resultText = typeof req.body?.resultText === "string" ? req.body.resultText.trim() : "";
+  const maxT = 4096;
+  if (resultText.length < 1 || resultText.length > maxT) {
+    res.status(400).json({
+      error: `内心戏内容长度须为 1～${maxT} 字`,
+      code: "BAD_TEXT",
+    });
+    return;
+  }
+
+  const mime = req.file.mimetype;
+  const sourceName = `${randomUUID()}${extForUploadedPhoto(mime)}`;
+  const abs = join(ensureReadingsUploadDir(), sourceName);
+  try {
+    writeFileSync(abs, req.file.buffer);
+  } catch (writeErr) {
+    console.error(writeErr);
+    res.status(500).json({ error: "保存配图失败", code: "INTERNAL" });
+    return;
+  }
+  let ins: { lastInsertRowid: number | bigint };
+  try {
+    ins = getDb()
+      .prepare(
+        `INSERT INTO user_readings (user_id, result_text, source_image_filename)
+         VALUES (?, ?, ?)`,
+      )
+      .run(req.userId, resultText, sourceName);
+  } catch (dbErr) {
+    try {
+      unlinkSync(abs);
+    } catch {
+      /* ignore */
+    }
+    console.error(dbErr);
+    res.status(500).json({ error: "保存记录失败", code: "INTERNAL" });
+    return;
+  }
+  res.json({
+    ok: true,
+    readingId: Number(ins.lastInsertRowid),
+    remaining: getDailyUsage(config.dailyUploadLimit).remaining,
+  });
+};
+
+catRouter.post(
+  "/persist-reading",
+  requireAuth,
+  handleUpload,
+  handlePersistReading,
+);
+catRouter.post("/analyze", optionalAuth, handleUpload, handleAnalyze);

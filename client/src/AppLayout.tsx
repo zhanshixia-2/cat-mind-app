@@ -27,7 +27,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const isLoginPage = pathname === "/login";
   const isPlazaHome = pathname === "/";
-  const readTarget = authed ? "/read" : "/login?redirect=/read";
+  const readTarget = "/read";
   const meTarget = authed ? "/me" : "/login?redirect=/me";
   const [menuOpen, setMenuOpen] = useState(false);
   const accountWrapRef = useRef<HTMLDivElement | null>(null);

@@ -30,6 +30,58 @@ function setAuthCookie(
 
 export const authRouter = Router();
 
+/** 邮箱不存在则注册并登录，存在则校验密码登录（与客户端「单表单」对应） */
+authRouter.post("/enter", (req, res) => {
+  const email = normalizeEmail(
+    typeof req.body?.email === "string" ? req.body.email : "",
+  );
+  const password =
+    typeof req.body?.password === "string" ? req.body.password : "";
+  if (!isValidEmail(email)) {
+    res.status(400).json({ error: "请填写有效邮箱", code: "BAD_EMAIL" });
+    return;
+  }
+  if (password.length < MIN_PW || password.length > MAX_PW) {
+    res
+      .status(400)
+      .json({ error: `密码请 ${MIN_PW}～${MAX_PW} 位`, code: "BAD_PASSWORD" });
+    return;
+  }
+  const db = getDb();
+  const row = db
+    .prepare("SELECT id, password_hash FROM users WHERE email = ?")
+    .get(email) as { id: number; password_hash: string } | undefined;
+  if (!row) {
+    void (async () => {
+      const passwordHash = await hashPassword(password);
+      const r = db
+        .prepare("INSERT INTO users (email, password_hash) VALUES (?, ?)")
+        .run(email, passwordHash);
+      const userId = Number(r.lastInsertRowid);
+      setAuthCookie(res, userId);
+      res.json({ ok: true, user: { id: userId, email } });
+    })().catch((e) => {
+      console.error(e);
+      res.status(500).json({ error: "注册失败", code: "INTERNAL" });
+    });
+    return;
+  }
+  void (async () => {
+    const ok = await verifyPassword(password, row.password_hash);
+    if (!ok) {
+      res
+        .status(401)
+        .json({ error: "邮箱或密码错误", code: "BAD_CREDENTIALS" });
+      return;
+    }
+    setAuthCookie(res, row.id);
+    res.json({ ok: true, user: { id: row.id, email } });
+  })().catch((e) => {
+    console.error(e);
+    res.status(500).json({ error: "登录失败", code: "INTERNAL" });
+  });
+});
+
 authRouter.post("/register", (req, res) => {
   const email = normalizeEmail(
     typeof req.body?.email === "string" ? req.body.email : "",
