@@ -347,7 +347,7 @@ export function ReadCatPage() {
       }
       setResult(out.text);
       setReadingId(out.readingId);
-      setHint(`今日剩余额度：${out.remaining} 张`);
+      // setHint(`今日剩余额度：${out.remaining} 张`);
       void refreshUsage();
     } catch (err) {
       setLoading(false);
@@ -486,6 +486,11 @@ export function ReadCatPage() {
           </div>
         ) : null}
 
+        {hint ? (
+          <p className="hint-banner" role="status">
+            {hint}
+          </p>
+        ) : null}
       </form>
     </>
   );

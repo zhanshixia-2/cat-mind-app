@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { WAIT_CAT_IMAGE_URLS } from "./waitCatImages";
 
-const ROTATE_MS = 2000;
+const ROTATE_MS = 4000;
 const PRELOAD_HEAD = 5;
 
 type Props = {
@@ -10,7 +10,7 @@ type Props = {
 };
 
 /**
- * 主卡片内「生成中」轮播：与上传区同宽、白底、高度随内容撑开
+ * 主卡片内「生成中」轮播：无外框容器，与主卡内容区一体
  */
 export function CardWaitCarousel({ previewUrl }: Props) {
   const n = WAIT_CAT_IMAGE_URLS.length;
@@ -35,7 +35,7 @@ export function CardWaitCarousel({ previewUrl }: Props) {
 
   return (
     <div
-      className="card-wait"
+      className="card-wait-stack"
       role="status"
       aria-busy="true"
       aria-label="正在生成，猫图轮播中"
@@ -51,19 +51,6 @@ export function CardWaitCarousel({ previewUrl }: Props) {
             setIndex((i) => (i + 1) % n);
           }}
         />
-      </div>
-
-      <div className="card-wait__pager" aria-hidden>
-        {WAIT_CAT_IMAGE_URLS.map((_, i) => (
-          <span
-            key={i}
-            className={
-              i === index
-                ? "card-wait__dot card-wait__dot--active"
-                : "card-wait__dot"
-            }
-          />
-        ))}
       </div>
 
       {previewUrl ? (

@@ -679,6 +679,9 @@
 
 .upload-zone-wrap {
   width: 100%;
+  /* 避免主卡片在窄屏/短屏上作为 flex 子项被压扁，导致生成中轮播被裁成一条 */
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .upload-zone {
@@ -899,37 +902,34 @@
   text-align: center;
 }
 
-/* ========== 主卡片内：生成中轮播（与上传区同宽、白底、高度随内容）========== */
-.card-wait {
+/* ========== 主卡片内：生成中（无外框，仅纵向堆叠子块）========== */
+.card-wait-stack {
   width: 100%;
   box-sizing: border-box;
-  background: #fff;
-  border: 2px dashed var(--color-border-soft);
-  border-radius: 16px;
-  padding: 0.5rem 0.5rem 0.75rem;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.6rem;
+  flex-shrink: 0;
 }
 
+/* 与主卡同宽、无内边距避免两侧留灰；轮播图全宽、高度随比例自适应 */
 .card-wait__carousel {
   width: 100%;
-  max-height: min(42vh, 280px);
-  aspect-ratio: 4 / 3;
-  min-height: 0;
+  padding: 0;
+  box-sizing: border-box;
+  align-self: stretch;
   border-radius: 12px;
   overflow: hidden;
-  background: #f0ebe6;
   position: relative;
+  background: transparent;
 }
 
 .card-wait__img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
+  height: auto;
+  border-radius: 12px;
   animation: cardWaitImgFade 0.4s ease-out;
 }
 
