@@ -43,12 +43,10 @@ export function LoginPage() {
   return (
     <>
       <header className="login-brand">
-        <span className="login-emoji" aria-hidden>
-          🐱
-        </span>
+        
         <h1>登录</h1>
         <p className="login-sub">
-          输入邮箱与密码即可；若该邮箱尚未注册，将自动创建账号并登录。读猫话、我的记录等需登录后使用（无需验证邮箱）
+          登录后可将猫主子的心里话与大家分享哦~
         </p>
       </header>
       <form className="card card--login" onSubmit={onSubmit}>

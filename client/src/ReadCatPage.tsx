@@ -372,8 +372,6 @@ export function ReadCatPage() {
       </header>
 
       <form className="card card--main" onSubmit={handleSubmit}>
-        <p className="section-label">选择猫主子</p>
-
         <div className="upload-zone-wrap">
           {loading ? (
             <CardWaitCarousel previewUrl={preview} />
@@ -400,7 +398,7 @@ export function ReadCatPage() {
                 <span className="upload-icon" aria-hidden>
                   📷
                 </span>
-                <span className="upload-title">点击选择图片</span>
+                <span className="upload-title">点击上传猫主子照片</span>
                 <span className="upload-formats">支持 JPG、PNG、WebP、GIF</span>
               </div>
             </label>
