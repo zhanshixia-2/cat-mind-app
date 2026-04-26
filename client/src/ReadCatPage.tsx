@@ -180,8 +180,8 @@ export function ReadCatPage() {
           setHint("无法关联读猫记录，请重新生成一次");
           return;
         }
+        // 方案 C：发布前补 readingId 时不再 setFile，避免移动端预览图重渲染导致截图空白
         readyFile = await compressImageFileIfLarge(readyFile);
-        setFile(readyFile);
         const persisted = await persistReading(readyFile, result);
         rid = persisted.readingId;
         setReadingId(rid);
