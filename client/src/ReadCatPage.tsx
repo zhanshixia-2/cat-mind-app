@@ -1,8 +1,8 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { toBlob } from "html-to-image";
 import {
   analyzePhoto,
+  enterWithEmail,
   fetchUsage,
   persistReading,
   postPlazaPost,
@@ -12,74 +12,7 @@ import { CardWaitCarousel } from "./CardWaitCarousel";
 import { compressImageFileIfLarge } from "./imageCompress";
 import "./App.css";
 
-const READ_DRAFT_KEY = "cat_mind_read_draft_v1";
-const READ_DRAFT_DB = "cat_mind_read_draft_db";
-const READ_DRAFT_STORE = "drafts";
-const READ_DRAFT_ID = "latest";
-
 type ResumeIntent = "save" | "publish";
-
-type ReadDraftV2 = {
-  v: 2;
-  name: string;
-  mime: string;
-  file: Blob;
-  result: string;
-  pending: ResumeIntent;
-};
-
-function openDraftDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(READ_DRAFT_DB, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(READ_DRAFT_STORE)) {
-        db.createObjectStore(READ_DRAFT_STORE);
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error("打开草稿存储失败"));
-  });
-}
-
-async function saveDraftV2(draft: ReadDraftV2): Promise<void> {
-  const db = await openDraftDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(READ_DRAFT_STORE, "readwrite");
-    tx.objectStore(READ_DRAFT_STORE).put(draft, READ_DRAFT_ID);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("保存草稿失败"));
-    tx.onabort = () => reject(tx.error ?? new Error("保存草稿失败"));
-  });
-  db.close();
-}
-
-async function loadDraftV2(): Promise<ReadDraftV2 | null> {
-  const db = await openDraftDb();
-  const out = await new Promise<ReadDraftV2 | null>((resolve, reject) => {
-    const tx = db.transaction(READ_DRAFT_STORE, "readonly");
-    const req = tx.objectStore(READ_DRAFT_STORE).get(READ_DRAFT_ID);
-    req.onsuccess = () => {
-      const val = req.result as ReadDraftV2 | undefined;
-      resolve(val ?? null);
-    };
-    req.onerror = () => reject(req.error ?? new Error("读取草稿失败"));
-  });
-  db.close();
-  return out;
-}
-
-async function clearDraftV2(): Promise<void> {
-  const db = await openDraftDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(READ_DRAFT_STORE, "readwrite");
-    tx.objectStore(READ_DRAFT_STORE).delete(READ_DRAFT_ID);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("清理草稿失败"));
-    tx.onabort = () => reject(tx.error ?? new Error("清理草稿失败"));
-  });
-  db.close();
-}
 
 function readCatUserError(unknown: unknown, fallback: string): string {
   if (!(unknown instanceof Error)) {
@@ -98,24 +31,8 @@ function readCatUserError(unknown: unknown, fallback: string): string {
   return fallback;
 }
 
-function base64ToFile(base64: string, mime: string): File {
-  const bstr = atob(base64);
-  let n = bstr.length;
-  const u8 = new Uint8Array(n);
-  while (n--) u8[n] = bstr.charCodeAt(n);
-  const ext = mime.includes("png")
-    ? "png"
-    : mime.includes("webp")
-      ? "webp"
-      : mime.includes("gif")
-        ? "gif"
-        : "jpg";
-  return new File([u8], `draft.${ext}`, { type: mime || "image/jpeg" });
-}
-
 export function ReadCatPage() {
-  const { authed } = useContext(AuthedContext);
-  const navigate = useNavigate();
+  const { authed, onLoginSuccess } = useContext(AuthedContext);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -127,14 +44,14 @@ export function ReadCatPage() {
   const [plazaShared, setPlazaShared] = useState(false);
   const [sharePlazaDismissed, setSharePlazaDismissed] = useState(false);
   const [resumeIntent, setResumeIntent] = useState<ResumeIntent | null>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [pendingLoginAction, setPendingLoginAction] = useState<ResumeIntent | null>(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shareCaptureRef = useRef<HTMLDivElement>(null);
-  const saveLatestRef = useRef<() => Promise<void>>(
-    () => Promise.resolve(),
-  );
-  const plazaLatestRef = useRef<() => Promise<void>>(
-    () => Promise.resolve(),
-  );
 
   const refreshUsage = useCallback(async () => {
     try {
@@ -158,138 +75,24 @@ export function ReadCatPage() {
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
-  const goLoginWithDraft = useCallback(
-    (pending: ResumeIntent) => {
-      if (!file || !result) return;
-      void (async () => {
-        let f = file;
-        try {
-          f = await compressImageFileIfLarge(file);
-          setFile(f);
-        } catch (e) {
-          setHint(readCatUserError(e, "处理图片时出错，请重试或换小图。"));
-          return;
-        }
-        try {
-          await saveDraftV2({
-            v: 2,
-            name: f.name || "draft.jpg",
-            mime: f.type || "image/jpeg",
-            file: f,
-            result,
-            pending,
-          });
-        } catch {
-          const fr = new FileReader();
-          fr.onload = () => {
-            const dataUrl = fr.result as string;
-            const i = dataUrl.indexOf(",");
-            const b64 = i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
-            const mime = f.type || "image/jpeg";
-            try {
-              sessionStorage.setItem(
-                READ_DRAFT_KEY,
-                JSON.stringify({
-                  v: 1,
-                  imageBase64: b64,
-                  mime,
-                  result,
-                  pending,
-                }),
-              );
-            } catch {
-              setHint("图片或文案过大，无法暂存。请先登录后再读猫。");
-              return;
-            }
-            void navigate("/login?redirect=" + encodeURIComponent("/read"));
-          };
-          fr.onerror = () => {
-            setHint("无法读取图片，请重试或先登录。");
-          };
-          fr.readAsDataURL(f);
-          return;
-        }
-        void navigate("/login?redirect=" + encodeURIComponent("/read"));
-      })();
-    },
-    [file, result, navigate],
-  );
+  const openLoginModal = useCallback((pending: ResumeIntent) => {
+    setPendingLoginAction(pending);
+    setLoginError(null);
+    setLoginOpen(true);
+  }, []);
 
   useEffect(() => {
-    if (!authed) return;
-    void (async () => {
-      let restored: { file: File; result: string; pending: ResumeIntent } | null =
-        null;
-      try {
-        const d2 = await loadDraftV2();
-        if (d2 && d2.v === 2 && d2.result) {
-          restored = {
-            file: new File([d2.file], d2.name || "draft.jpg", {
-              type: d2.mime || "image/jpeg",
-            }),
-            result: d2.result,
-            pending: d2.pending,
-          };
-          await clearDraftV2();
-        }
-      } catch {
-        /* ignore indexedDB and fallback */
-      }
-      if (!restored) {
-        const raw = sessionStorage.getItem(READ_DRAFT_KEY);
-        if (!raw) return;
-        type DraftV1 = {
-          v: number;
-          imageBase64: string;
-          mime: string;
-          result: string;
-          pending: ResumeIntent;
-        };
-        let d: DraftV1;
-        try {
-          d = JSON.parse(raw) as DraftV1;
-        } catch {
-          return;
-        }
-        if (d.v !== 1 || !d.imageBase64 || !d.result) {
-          return;
-        }
-        sessionStorage.removeItem(READ_DRAFT_KEY);
-        restored = {
-          file: base64ToFile(d.imageBase64, d.mime),
-          result: d.result,
-          pending: d.pending,
-        };
-      }
-      let f = restored.file;
-      setFile(f);
-      setResult(restored.result);
-      setLoading(false);
-      setHint("正在恢复并保存你的读猫草稿…");
-      try {
-        f = await compressImageFileIfLarge(f);
-        setFile(f);
-        const { readingId: rid } = await persistReading(f, restored.result);
-        setReadingId(rid);
-        setHint(null);
-        setPlazaShared(false);
-        setSharePlazaDismissed(false);
-        setResumeIntent(restored.pending);
-      } catch (e) {
-        setHint(readCatUserError(e, "保存读猫记录时出错，请重试。"));
-      }
-    })();
-  }, [authed]);
-
-  useEffect(() => {
-    if (!resumeIntent || result == null || readingId == null) {
+    if (!resumeIntent || result == null) {
+      return;
+    }
+    if (resumeIntent === "publish" && readingId == null) {
       return;
     }
     const what = resumeIntent;
     setResumeIntent(null);
     const t = window.setTimeout(() => {
-      if (what === "save") void saveLatestRef.current();
-      else void plazaLatestRef.current();
+      if (what === "save") void handleSave();
+      else void handleShareToPlaza();
     }, 200);
     return () => clearTimeout(t);
   }, [resumeIntent, result, readingId]);
@@ -301,7 +104,7 @@ export function ReadCatPage() {
 
   async function handleSave() {
     if (!authed) {
-      goLoginWithDraft("save");
+      openLoginModal("save");
       return;
     }
     const el = shareCaptureRef.current;
@@ -360,20 +163,29 @@ export function ReadCatPage() {
 
   async function handleShareToPlaza() {
     if (!authed) {
-      goLoginWithDraft("publish");
+      openLoginModal("publish");
       return;
     }
     const el = shareCaptureRef.current;
     if (!el || !result || sharingPlaza) {
       return;
     }
-    if (readingId == null) {
-      setHint("无法关联读猫记录，请重新生成一次");
-      return;
-    }
     setSharingPlaza(true);
     setHint(null);
     try {
+      let readyFile = file;
+      let rid = readingId;
+      if (rid == null) {
+        if (!readyFile || !result) {
+          setHint("无法关联读猫记录，请重新生成一次");
+          return;
+        }
+        readyFile = await compressImageFileIfLarge(readyFile);
+        setFile(readyFile);
+        const persisted = await persistReading(readyFile, result);
+        rid = persisted.readingId;
+        setReadingId(rid);
+      }
       const blob = await toBlob(el, {
         cacheBust: false,
         backgroundColor: "#ffffff",
@@ -385,7 +197,7 @@ export function ReadCatPage() {
       }
       const f = new File([blob], "plaza-tile.png", { type: "image/png" });
       const text = `【咪想告诉你：】${result}`;
-      await postPlazaPost(f, text, readingId);
+      await postPlazaPost(f, text, rid);
       setPlazaShared(true);
       setHint("已同步到「广场」，其他主子也能看到啦～");
     } catch (e) {
@@ -448,11 +260,30 @@ export function ReadCatPage() {
     }
   }
 
-  saveLatestRef.current = () => handleSave();
-  plazaLatestRef.current = () => handleShareToPlaza();
-
   const showPlazaPrompt =
     result !== null && !loading && !plazaShared && !sharePlazaDismissed;
+
+  async function onInlineLoginSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (loginLoading) return;
+    setLoginLoading(true);
+    setLoginError(null);
+    try {
+      const u = await enterWithEmail(loginEmail.trim(), loginPassword);
+      onLoginSuccess(u);
+      setLoginOpen(false);
+      setLoginPassword("");
+      const next = pendingLoginAction;
+      setPendingLoginAction(null);
+      if (next) {
+        setResumeIntent(next);
+      }
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : "登录失败");
+    } finally {
+      setLoginLoading(false);
+    }
+  }
 
   return (
     <>
@@ -582,6 +413,62 @@ export function ReadCatPage() {
           </p>
         ) : null}
       </form>
+
+      {loginOpen ? (
+        <div className="inline-login-backdrop" role="dialog" aria-modal="true" aria-label="登录后继续">
+          <div className="inline-login-card">
+            <h2 className="inline-login-title">登录</h2>
+            <p className="inline-login-sub">
+            登录后可将猫主子的心里话保存或者和大家分享哦~
+            </p>
+            <form className="inline-login-form" onSubmit={onInlineLoginSubmit}>
+              <label className="label">
+                邮箱
+                <input
+                  type="email"
+                  className="input--login"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  required
+                />
+              </label>
+              <label className="label">
+                密码
+                <input
+                  type="password"
+                  className="input--login"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="至少 6 位"
+                  autoComplete="current-password"
+                  minLength={6}
+                  required
+                />
+              </label>
+              {loginError ? <p className="error">{loginError}</p> : null}
+              <div className="inline-login-actions">
+                <button
+                  type="button"
+                  className="btn-share"
+                  onClick={() => {
+                    setLoginOpen(false);
+                    setPendingLoginAction(null);
+                    setLoginError(null);
+                  }}
+                  disabled={loginLoading}
+                >
+                  取消
+                </button>
+                <button type="submit" className="btn-retry" disabled={loginLoading}>
+                  {loginLoading ? "登录中…" : "登录"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

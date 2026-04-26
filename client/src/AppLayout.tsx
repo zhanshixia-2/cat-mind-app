@@ -77,7 +77,7 @@ export function AppLayout() {
             我的
           </Link>
         </nav>
-        {/* <div className="app-topbar__account" ref={accountWrapRef}>
+        <div className="app-topbar__account" ref={accountWrapRef}>
           <button
             type="button"
             className="btn-account-icon"
@@ -131,7 +131,7 @@ export function AppLayout() {
               )}
             </ul>
           ) : null}
-        </div> */}
+        </div>
       </div>
       <main className="app-main">
         <Outlet />

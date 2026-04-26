@@ -603,7 +603,6 @@
   display: block;
   width: 100%;
   height: auto;
-  vertical-align: middle;
 }
 
 
@@ -1069,4 +1068,53 @@
   margin: 0;
   color: var(--color-text-muted);
   font-size: 0.95rem;
+}
+
+/* ========== 读猫页内联登录弹窗（未登录保存/发布时） ========== */
+.inline-login-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(20, 10, 0, 0.35);
+  backdrop-filter: blur(2px);
+}
+
+.inline-login-card {
+  width: 100%;
+  max-width: min(420px, 100vw - 2rem);
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid var(--color-border-soft);
+  box-shadow: var(--shadow-card);
+  padding: 1rem;
+}
+
+.inline-login-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.inline-login-sub {
+  margin: 0.45rem 0 0.9rem;
+  font-size: 0.85rem;
+  color: var(--color-text-hint);
+  line-height: 1.45;
+}
+
+.inline-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.inline-login-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
 }
