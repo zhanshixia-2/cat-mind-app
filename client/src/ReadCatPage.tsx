@@ -13,6 +13,73 @@ import { compressImageFileIfLarge } from "./imageCompress";
 import "./App.css";
 
 const READ_DRAFT_KEY = "cat_mind_read_draft_v1";
+const READ_DRAFT_DB = "cat_mind_read_draft_db";
+const READ_DRAFT_STORE = "drafts";
+const READ_DRAFT_ID = "latest";
+
+type ResumeIntent = "save" | "publish";
+
+type ReadDraftV2 = {
+  v: 2;
+  name: string;
+  mime: string;
+  file: Blob;
+  result: string;
+  pending: ResumeIntent;
+};
+
+function openDraftDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(READ_DRAFT_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(READ_DRAFT_STORE)) {
+        db.createObjectStore(READ_DRAFT_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("打开草稿存储失败"));
+  });
+}
+
+async function saveDraftV2(draft: ReadDraftV2): Promise<void> {
+  const db = await openDraftDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(READ_DRAFT_STORE, "readwrite");
+    tx.objectStore(READ_DRAFT_STORE).put(draft, READ_DRAFT_ID);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("保存草稿失败"));
+    tx.onabort = () => reject(tx.error ?? new Error("保存草稿失败"));
+  });
+  db.close();
+}
+
+async function loadDraftV2(): Promise<ReadDraftV2 | null> {
+  const db = await openDraftDb();
+  const out = await new Promise<ReadDraftV2 | null>((resolve, reject) => {
+    const tx = db.transaction(READ_DRAFT_STORE, "readonly");
+    const req = tx.objectStore(READ_DRAFT_STORE).get(READ_DRAFT_ID);
+    req.onsuccess = () => {
+      const val = req.result as ReadDraftV2 | undefined;
+      resolve(val ?? null);
+    };
+    req.onerror = () => reject(req.error ?? new Error("读取草稿失败"));
+  });
+  db.close();
+  return out;
+}
+
+async function clearDraftV2(): Promise<void> {
+  const db = await openDraftDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(READ_DRAFT_STORE, "readwrite");
+    tx.objectStore(READ_DRAFT_STORE).delete(READ_DRAFT_ID);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("清理草稿失败"));
+    tx.onabort = () => reject(tx.error ?? new Error("清理草稿失败"));
+  });
+  db.close();
+}
 
 function readCatUserError(unknown: unknown, fallback: string): string {
   if (!(unknown instanceof Error)) {
@@ -59,9 +126,7 @@ export function ReadCatPage() {
   const [sharingPlaza, setSharingPlaza] = useState(false);
   const [plazaShared, setPlazaShared] = useState(false);
   const [sharePlazaDismissed, setSharePlazaDismissed] = useState(false);
-  const [resumeIntent, setResumeIntent] = useState<
-    "save" | "publish" | null
-  >(null);
+  const [resumeIntent, setResumeIntent] = useState<ResumeIntent | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const shareCaptureRef = useRef<HTMLDivElement>(null);
   const saveLatestRef = useRef<() => Promise<void>>(
@@ -94,7 +159,7 @@ export function ReadCatPage() {
   }, [file]);
 
   const goLoginWithDraft = useCallback(
-    (pending: "save" | "publish") => {
+    (pending: ResumeIntent) => {
       if (!file || !result) return;
       void (async () => {
         let f = file;
@@ -105,33 +170,46 @@ export function ReadCatPage() {
           setHint(readCatUserError(e, "处理图片时出错，请重试或换小图。"));
           return;
         }
-        const fr = new FileReader();
-        fr.onload = () => {
-          const dataUrl = fr.result as string;
-          const i = dataUrl.indexOf(",");
-          const b64 = i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
-          const mime = f.type || "image/jpeg";
-          try {
-            sessionStorage.setItem(
-              READ_DRAFT_KEY,
-              JSON.stringify({
-                v: 1,
-                imageBase64: b64,
-                mime,
-                result,
-                pending,
-              }),
-            );
-          } catch {
-            setHint("图片或文案过大，无法暂存。请换一张更小的图，或先登录再读猫。");
-            return;
-          }
-          void navigate("/login?redirect=" + encodeURIComponent("/read"));
-        };
-        fr.onerror = () => {
-          setHint("无法读取图片，请重试或先登录。");
-        };
-        fr.readAsDataURL(f);
+        try {
+          await saveDraftV2({
+            v: 2,
+            name: f.name || "draft.jpg",
+            mime: f.type || "image/jpeg",
+            file: f,
+            result,
+            pending,
+          });
+        } catch {
+          const fr = new FileReader();
+          fr.onload = () => {
+            const dataUrl = fr.result as string;
+            const i = dataUrl.indexOf(",");
+            const b64 = i >= 0 ? dataUrl.slice(i + 1) : dataUrl;
+            const mime = f.type || "image/jpeg";
+            try {
+              sessionStorage.setItem(
+                READ_DRAFT_KEY,
+                JSON.stringify({
+                  v: 1,
+                  imageBase64: b64,
+                  mime,
+                  result,
+                  pending,
+                }),
+              );
+            } catch {
+              setHint("图片或文案过大，无法暂存。请先登录后再读猫。");
+              return;
+            }
+            void navigate("/login?redirect=" + encodeURIComponent("/read"));
+          };
+          fr.onerror = () => {
+            setHint("无法读取图片，请重试或先登录。");
+          };
+          fr.readAsDataURL(f);
+          return;
+        }
+        void navigate("/login?redirect=" + encodeURIComponent("/read"));
       })();
     },
     [file, result, navigate],
@@ -139,52 +217,66 @@ export function ReadCatPage() {
 
   useEffect(() => {
     if (!authed) return;
-    const raw = sessionStorage.getItem(READ_DRAFT_KEY);
-    if (!raw) return;
-    type DraftV1 = {
-      v: number;
-      imageBase64: string;
-      mime: string;
-      result: string;
-      pending: "save" | "publish";
-    };
-    let d: DraftV1;
-    try {
-      d = JSON.parse(raw) as DraftV1;
-    } catch {
-      return;
-    }
-    if (d.v !== 1 || !d.imageBase64 || !d.result) {
-      return;
-    }
-    sessionStorage.removeItem(READ_DRAFT_KEY);
-    let f = base64ToFile(d.imageBase64, d.mime);
-    setFile(f);
-    setResult(d.result);
-    setLoading(false);
-    setHint("正在保存你的读猫记录…");
     void (async () => {
+      let restored: { file: File; result: string; pending: ResumeIntent } | null =
+        null;
+      try {
+        const d2 = await loadDraftV2();
+        if (d2 && d2.v === 2 && d2.result) {
+          restored = {
+            file: new File([d2.file], d2.name || "draft.jpg", {
+              type: d2.mime || "image/jpeg",
+            }),
+            result: d2.result,
+            pending: d2.pending,
+          };
+          await clearDraftV2();
+        }
+      } catch {
+        /* ignore indexedDB and fallback */
+      }
+      if (!restored) {
+        const raw = sessionStorage.getItem(READ_DRAFT_KEY);
+        if (!raw) return;
+        type DraftV1 = {
+          v: number;
+          imageBase64: string;
+          mime: string;
+          result: string;
+          pending: ResumeIntent;
+        };
+        let d: DraftV1;
+        try {
+          d = JSON.parse(raw) as DraftV1;
+        } catch {
+          return;
+        }
+        if (d.v !== 1 || !d.imageBase64 || !d.result) {
+          return;
+        }
+        sessionStorage.removeItem(READ_DRAFT_KEY);
+        restored = {
+          file: base64ToFile(d.imageBase64, d.mime),
+          result: d.result,
+          pending: d.pending,
+        };
+      }
+      let f = restored.file;
+      setFile(f);
+      setResult(restored.result);
+      setLoading(false);
+      setHint("正在恢复并保存你的读猫草稿…");
       try {
         f = await compressImageFileIfLarge(f);
         setFile(f);
-        const { readingId: rid } = await persistReading(f, d.result);
+        const { readingId: rid } = await persistReading(f, restored.result);
         setReadingId(rid);
         setHint(null);
         setPlazaShared(false);
         setSharePlazaDismissed(false);
-        setResumeIntent(d.pending);
+        setResumeIntent(restored.pending);
       } catch (e) {
-        try {
-          sessionStorage.setItem(READ_DRAFT_KEY, raw);
-        } catch {
-          /* ignore */
-        }
-        setHint(
-          readCatUserError(
-            e,
-            "保存读猫记录时出错，请重试。",
-          ),
-        );
+        setHint(readCatUserError(e, "保存读猫记录时出错，请重试。"));
       }
     })();
   }, [authed]);
